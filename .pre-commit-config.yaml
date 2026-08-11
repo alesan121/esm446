@@ -1,0 +1,61 @@
+repos:
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: "v4.16.3"
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+      - id: commitizen-branch
+        stages: [pre-push]
+        args:
+          - --rev-range
+          - origin/main..HEAD
+
+  - repo: https://github.com/python-poetry/poetry
+    rev: "2.4.1"
+    hooks:
+      - id: poetry-check
+      - id: poetry-lock
+      - id: poetry-install
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+      - id: check-yaml
+      - id: check-toml
+      - id: trailing-whitespace
+        # legacy/ preserves the v0 prototype byte-for-byte as the rebuild baseline.
+        exclude: ^legacy/
+      - id: end-of-file-fixer
+        exclude: ^legacy/
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-json
+      - id: pretty-format-json
+        args: [--autofix, --no-ensure-ascii, --no-sort-keys]
+      - id: check-ast
+      - id: debug-statements
+      - id: check-docstring-first
+      - id: check-added-large-files
+        # IQ test vectors are committed deliberately; anything larger wants Git LFS.
+        args: ["--maxkb=5120"]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: black
+        name: black
+        entry: poetry run black --check .
+        language: system
+        pass_filenames: false
+      - id: ruff
+        name: ruff
+        entry: poetry run ruff check .
+        language: system
+        pass_filenames: false
+      - id: flake8
+        name: flake8
+        entry: poetry run pflake8 .
+        language: system
+        pass_filenames: false

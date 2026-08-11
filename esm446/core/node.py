@@ -156,11 +156,78 @@ class EsmNode:
 
         emissions = self.tracker.update(spectra, power, mask, noise)
         self.frames_processed += spectra.shape[0]
-        return [self._report(e) for e in self.tracker.filter_short(emissions)]
+        return self._report_all(self.tracker.filter_short(emissions))
 
     def flush(self) -> list[EmissionReport]:
         """Close and report any emission still open at end of stream."""
-        return [self._report(e) for e in self.tracker.filter_short(self.tracker.flush())]
+        return self._report_all(self.tracker.filter_short(self.tracker.flush()))
+
+    def _report_all(self, emissions: list[Emission]) -> list[EmissionReport]:
+        """Merge emissions that are one emitter seen twice, then report each group."""
+        return [self._report_group(group) for group in self._group_adjacent(emissions)]
+
+    def _group_adjacent(self, emissions: list[Emission]) -> list[list[Emission]]:
+        """Group emissions in adjacent bins that overlap in time.
+
+        A transmitter is under no obligation to sit on a bin centre. One landing halfway
+        between two bins splits its energy evenly, both bins cross the detection threshold,
+        and the tracker — which works per bin — closes two emissions for one emitter. The
+        `delta` emitter in the demonstration scenario does exactly this.
+
+        Adjacency plus time overlap is the discriminator. Two genuinely different emitters on
+        adjacent channels transmitting simultaneously would be merged by this rule, which is
+        the cost; against it, a single off-grid emitter reported twice, once at a channel it
+        was never on, is the more damaging error in a system whose job includes finding
+        emissions that are not on the channel plan.
+        """
+        groups: list[list[Emission]] = []
+        for emission in sorted(emissions, key=lambda e: (e.start_frame, e.bin_index)):
+            for group in groups:
+                if any(self._is_adjacent(emission, other) for other in group):
+                    group.append(emission)
+                    break
+            else:
+                groups.append([emission])
+        return groups
+
+    def _is_adjacent(self, first: Emission, second: Emission) -> bool:
+        """Whether two emissions are one bin apart and overlap in time."""
+        num_bins = self.config.num_channels
+        gap = min(
+            (first.bin_index - second.bin_index) % num_bins,
+            (second.bin_index - first.bin_index) % num_bins,
+        )
+        overlaps = first.start_frame <= second.end_frame and second.start_frame <= first.end_frame
+        return gap == 1 and overlaps
+
+    def _group_frequency(self, group: list[Emission]) -> float:
+        """Estimate the emitter's frequency from a group of bins.
+
+        For a single bin, parabolic interpolation against its neighbours. For a split
+        emitter, the power-weighted centroid of the bins it landed in, which returns the
+        midpoint when the split is even and the dominant bin when it is not — exactly the
+        cases parabolic interpolation cannot resolve from one bin's point of view, because
+        neither bin is a local maximum.
+        """
+        spacing = self.config.channel_spacing
+        if len(group) == 1:
+            emission = group[0]
+            return float(self._bin_frequencies[emission.bin_index] + emission.bin_offset * spacing)
+
+        # Unwrap bin indices relative to the strongest, so a group straddling bin 0 does not
+        # average to the opposite side of the band.
+        strongest = max(group, key=lambda e: e.mean_power)
+        num_bins = self.config.num_channels
+        total = 0.0
+        weighted = 0.0
+        for emission in group:
+            offset = (emission.bin_index - strongest.bin_index + num_bins // 2) % num_bins - (
+                num_bins // 2
+            )
+            weighted += emission.mean_power * offset
+            total += emission.mean_power
+        centroid = weighted / total if total else 0.0
+        return float(self._bin_frequencies[strongest.bin_index] + centroid * spacing)
 
     def run(self, source: IQSource, block_size: int = DEFAULT_BLOCK_SIZE) -> list[EmissionReport]:
         """Consume a source to exhaustion and return every emission found.
@@ -219,12 +286,16 @@ class EsmNode:
             demodulated.peak_deviation_hz,
         )
 
-    def _report(self, emission: Emission) -> EmissionReport:
-        """Turn a completed emission into its metadata record."""
+    def _report_group(self, group: list[Emission]) -> EmissionReport:
+        """Turn one emitter's emissions -- usually one, sometimes a split pair -- into a record."""
+        emission = max(group, key=lambda e: e.mean_power)
         tone_hz, classification, deviation_hz = self._identify(emission)
 
-        frequency_hz = float(self._bin_frequencies[emission.bin_index])
-        peak_dbfs = emission.peak_power_dbfs
+        # Refine the frequency past the bin grid before deciding anything about it. Nothing
+        # obliges a transmitter to sit on a channel centre, and reporting an off-grid emitter
+        # at the nearest bin would state it was on a channel it was never on.
+        frequency_hz = self._group_frequency(group)
+        peak_dbfs = max(e.peak_power_dbfs for e in group)
         estimated_dbm = (
             self.calibration.to_dbm(peak_dbfs, self.gains) if self.gains is not None else None
         )

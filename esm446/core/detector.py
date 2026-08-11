@@ -50,7 +50,20 @@ class CfarConfig:
             track a sloping noise floor.
         num_guard: Guard cells either side, excluded from the estimate. They keep energy
             that has leaked out of the cell under test from raising its own threshold.
-        pfa: Design probability of false alarm per cell per frame.
+        pfa: Design probability of false alarm **per cell per frame**.
+
+            The unit is what makes the number counter-intuitive. Radar texts routinely quote
+            1e-4 or 1e-6, but the sensible value depends entirely on how many cells pass
+            through the detector per second, and here that is 160 bins at a 25 kHz frame
+            rate: four million. At 1e-4 that is 400 false alarms every second across the
+            band; at 1e-8 it is effectively none.
+
+            The cost of tightening from 1e-4 to 1e-8 is 4.3 dB of threshold, which is a
+            straightforward trade for removing four hundred spurious detections a second.
+            It matters more than it sounds: the tracker's quarter-second hangover will glue
+            unrelated false alarms in one bin into something long enough to look like a
+            transmission, so a loose P_fa does not merely add noise to the output, it
+            fabricates emissions.
         method: ``"ca"`` for cell averaging, ``"os"`` for ordered statistic.
         os_rank_fraction: For OS-CFAR, which order statistic to use as a fraction of
             ``num_reference``. 0.75 is the usual robust choice: high enough to be a good
@@ -74,7 +87,7 @@ class CfarConfig:
 
     num_reference: int = 24
     num_guard: int = 2
-    pfa: float = 1e-4
+    pfa: float = 1e-8
     method: str = "os"
     os_rank_fraction: float = 0.75
     update_interval: int = 64

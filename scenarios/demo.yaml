@@ -1,0 +1,84 @@
+# Default demonstration scenario.
+#
+# Five emitters chosen so the run exercises something distinct in each case rather than
+# repeating the easy one:
+#
+#   alpha    strong, close, carries the pre-shared CTCSS tone -> should report FRIEND
+#   bravo    same channel family, different tone -> identified but not friendly
+#   charlie  weak and distant, near the detection limit -> exercises Pd against SNR
+#   delta    off the 12.5 kHz grid -> must be reported as off-grid, not snapped to a channel
+#   echo     adjacent channel to alpha, 30 dB weaker -> the masking case OS-CFAR exists for
+#
+# Overs overlap in time on purpose. A scene where only one radio ever transmits does not
+# test channelisation at all.
+
+name: demo
+duration_s: 30.0
+sample_rate: 2000000.0
+centre_frequency: 446093750.0
+noise_floor_dbm: -120.0
+seed: 20260318
+
+propagation:
+  path_loss_exponent: 3.5
+  shadowing_sigma_db: 4.0
+  rayleigh_fading: true
+
+emitters:
+  - name: alpha
+    channel: 4
+    eirp_dbm: 29.0
+    distance_m: 300.0
+    ctcss_hz: 114.8
+    frequency_error_hz: 120.0
+    ramp_ms: 5.0
+    transmissions:
+      - {start_s: 1.0, stop_s: 4.5}
+      - {start_s: 9.0, stop_s: 12.0}
+      - {start_s: 21.0, stop_s: 25.5}
+
+  - name: bravo
+    channel: 11
+    eirp_dbm: 29.0
+    distance_m: 700.0
+    ctcss_hz: 141.3
+    frequency_error_hz: -280.0
+    ramp_ms: 8.0
+    transmissions:
+      - {start_s: 3.0, stop_s: 7.0}
+      - {start_s: 14.0, stop_s: 18.5}
+      - {start_s: 26.0, stop_s: 29.0}
+
+  - name: charlie
+    channel: 8
+    eirp_dbm: 27.0
+    distance_m: 2600.0
+    ctcss_hz: null
+    frequency_error_hz: 450.0
+    ramp_ms: 5.0
+    transmissions:
+      - {start_s: 5.5, stop_s: 9.0}
+      - {start_s: 19.0, stop_s: 22.0}
+
+  # Deliberately between channels 13 and 14, which is the kind of emission the nominal
+  # 16-channel grid would miss entirely and the 160-bin survey exists to catch.
+  - name: delta
+    frequency_hz: 446162500.0
+    eirp_dbm: 29.0
+    distance_m: 900.0
+    ctcss_hz: null
+    ramp_ms: 3.0
+    transmissions:
+      - {start_s: 11.0, stop_s: 15.0}
+      - {start_s: 24.0, stop_s: 27.5}
+
+  - name: echo
+    channel: 5
+    eirp_dbm: 20.0
+    distance_m: 1800.0
+    ctcss_hz: 114.8
+    frequency_error_hz: -90.0
+    ramp_ms: 5.0
+    transmissions:
+      - {start_s: 2.0, stop_s: 4.0}
+      - {start_s: 22.0, stop_s: 25.0}

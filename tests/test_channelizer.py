@@ -70,9 +70,7 @@ def test_every_pmr_channel_lands_exactly_on_a_bin() -> None:
     """The reason the receiver is tuned to channel 8 rather than the band midpoint."""
     seen = {}
     for channel in range(1, bands.CHANNEL_COUNT + 1):
-        index = bands.channel_bin_index(
-            channel, bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS
-        )
+        index = bands.channel_bin_index(channel, bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS)
         seen[channel] = index
     assert len(set(seen.values())) == bands.CHANNEL_COUNT, "channels collided onto one bin"
     assert seen[8] == 0, "channel 8 is the tuned centre, so it must be bin 0"
@@ -87,9 +85,7 @@ def test_band_midpoint_is_rejected_as_centre_frequency() -> None:
 def test_bin_frequency_matches_band_plan() -> None:
     frequencies = bands.bin_frequencies(bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS)
     for channel in range(1, bands.CHANNEL_COUNT + 1):
-        index = bands.channel_bin_index(
-            channel, bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS
-        )
+        index = bands.channel_bin_index(channel, bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS)
         assert frequencies[index] == pytest.approx(bands.channel_frequency(channel))
 
 

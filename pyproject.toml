@@ -1,49 +1,144 @@
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "esm446"
-version = "0.1.0"
+version = "0.0.0-dev"
 description = "Passive Electronic Support Measures node for the PMR446 band"
-readme = "README.md"
-license = { file = "LICENSE" }
-requires-python = ">=3.10"
-dependencies = [
-    "numpy>=1.23",
-    "scipy>=1.8",
-    "PyYAML>=6.0",
+authors = [
+    {name = "alesan121", email = "alesanguti121@gmail.com"}
 ]
-
-[project.optional-dependencies]
-# SoapySDR is intentionally NOT a dependency: it is a system package with a
-# compiled binding, and the entire test suite runs without it via the file and
-# simulated signal sources.
-dev = [
-    "pytest>=7.0",
-    "ruff>=0.4",
-    "mypy>=1.0",
-    "matplotlib>=3.5",
+license-files = ["LICENSE"]
+requires-python = ">=3.13,<3.15.0"
+dependencies = [
+    "numpy (>=2.2.0,<3.0.0)",
+    "scipy (>=1.15.0,<2.0.0)",
+    "pydantic-settings (>=2.14.2,<3.0.0)",
+    "PyYAML (>=6.0.2,<7.0.0)",
 ]
 
 [project.scripts]
-esm446-node = "esm446.cli.node:main"
 esm446-bench = "esm446.bench:main"
 
-[tool.setuptools.packages.find]
-include = ["esm446*"]
+[tool.poetry]
+packages = [{ include = "esm446" }]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.1,<5.0.0",
+    "ruff>=0.15.22,<0.16.0",
+    "black>=26.1.0,<27.0.0",
+    "bandit>=1.9.3,<2.0.0",
+    "safety>=3.7.0,<4.0.0",
+    "flake8>=7.0.0,<8.0.0",
+    "pyproject-flake8>=7.0.0,<8.0.0",
+    "pytest>=9.1.1,<10.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests", "legacy"]
+targets = ["."]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+# legacy/ preserves the v0 prototype byte-for-byte as the rebuild baseline. Its defects are
+# the subject of the V&V report and are cited by line, so it is deliberately not linted or
+# reformatted -- doing so would destroy the reference it exists to be.
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+ignore = ["F401", "E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+force-exclude = "legacy/"
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E501", "E203"]
+exclude = [".venv", ".git", "__pycache__", "build", "dist", "legacy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
+[tool.coverage.run]
+source = ["esm446"]
+omit = [
+    "*/__init__.py",
+]
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+[tool.coverage.report]
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
 
-[tool.mypy]
-python_version = "3.10"
-warn_unused_ignores = true
-disallow_untyped_defs = true
+[tool.semantic_release]
+assets = []
+build_command_env = []
+commit_message = "chore(release): {version}"
+commit_parser = "conventional"
+logging_use_named_masks = false
+major_on_zero = true
+allow_zero_version = true
+no_git_verify = false
+tag_format = "v{version}"
+version_variables = [
+    "esm446/config/config.py:APP_VERSION",
+]
+version_toml = [
+    "pyproject.toml:project.version",
+]
+
+[tool.semantic_release.branches.main]
+match = "^(main|master)$"
+prerelease = false
+
+[tool.semantic_release.branches.develop]
+match = "^(dev)/.+"
+prerelease_token = "dev"
+prerelease = true
+
+[tool.semantic_release.branches.feature]
+match = "^(feat|feature)/.+"
+prerelease_token = "rc"
+prerelease = true
+
+[tool.semantic_release.branches.other]
+match = "^(test|fix)/.+"
+prerelease_token = "alpha"
+prerelease = true
+
+[tool.semantic_release.changelog]
+exclude_commit_patterns = []
+mode = "update"
+
+[tool.semantic_release.commit_author]
+env = "GIT_COMMIT_AUTHOR"
+default = "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+[tool.semantic_release.commit_parser_options]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+other_allowed_tags = ["build", "chore", "ci", "docs", "style", "refactor", "test"]
+allowed_tags = ["feat", "fix", "perf", "build", "chore", "ci", "docs", "style", "refactor", "test"]
+default_bump_level = 0
+parse_squash_commits = false
+ignore_merge_commits = false
+
+[tool.semantic_release.remote]
+name = "origin"
+type = "github"
+ignore_token_for_push = false
+insecure = false
+token = { env = "GITHUB_TOKEN" }
+
+[tool.semantic_release.publish]
+dist_glob_patterns = ["dist/*"]
+upload_to_vcs_release = true

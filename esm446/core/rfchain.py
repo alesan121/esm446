@@ -213,8 +213,12 @@ class RfChain:
             lines.append(f"{stage.name:<20} {stage.gain_db:>8.1f} {stage.noise_figure_db:>7.1f}")
         lines.append("")
         lines.append(f"cascaded noise figure   {self.noise_figure_db:>6.2f} dB")
-        lines.append(f"noise floor @ {bandwidth_hz / 1e3:.1f} kHz  {self.noise_floor_dbm(bandwidth_hz):>6.1f} dBm")
-        lines.append(f"MDS @ 13 dB SNR         {self.minimum_detectable_signal_dbm(bandwidth_hz):>6.1f} dBm")
+        lines.append(
+            f"noise floor @ {bandwidth_hz / 1e3:.1f} kHz  {self.noise_floor_dbm(bandwidth_hz):>6.1f} dBm"
+        )
+        lines.append(
+            f"MDS @ 13 dB SNR         {self.minimum_detectable_signal_dbm(bandwidth_hz):>6.1f} dBm"
+        )
         return "\n".join(lines)
 
 
@@ -246,8 +250,12 @@ def quantise_gains(lna_db: float, vga_db: float, amp_enabled: bool = False) -> H
     The driver rounds silently. Doing it here means the value recorded in the metadata is
     the value the hardware used, not the value someone asked for.
     """
-    lna = float(np.clip(round(lna_db / HACKRF_LNA_STEP_DB) * HACKRF_LNA_STEP_DB, 0.0, HACKRF_LNA_MAX_DB))
-    vga = float(np.clip(round(vga_db / HACKRF_VGA_STEP_DB) * HACKRF_VGA_STEP_DB, 0.0, HACKRF_VGA_MAX_DB))
+    lna = float(
+        np.clip(round(lna_db / HACKRF_LNA_STEP_DB) * HACKRF_LNA_STEP_DB, 0.0, HACKRF_LNA_MAX_DB)
+    )
+    vga = float(
+        np.clip(round(vga_db / HACKRF_VGA_STEP_DB) * HACKRF_VGA_STEP_DB, 0.0, HACKRF_VGA_MAX_DB)
+    )
     return HackrfGains(lna_db=lna, vga_db=vga, amp_enabled=amp_enabled)
 
 

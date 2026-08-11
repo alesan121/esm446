@@ -7,7 +7,6 @@ answer about detection range.
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from esm446.core import bands
@@ -104,9 +103,9 @@ def test_audit_reports_coverage_before_gain() -> None:
     findings = audit(PMR)
     out_of_band = [f for f in findings if "does not cover" in f]
     assert len(out_of_band) == 3
-    assert not any("dBi claimed" in f for f in findings), (
-        "an out-of-band antenna should be reported as out of band, not argued about on gain"
-    )
+    assert not any(
+        "dBi claimed" in f for f in findings
+    ), "an out-of-band antenna should be reported as out of band, not argued about on gain"
 
 
 def test_the_gain_claim_is_still_caught_inside_its_own_band() -> None:

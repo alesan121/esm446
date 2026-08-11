@@ -19,7 +19,6 @@ from esm446.core.rfchain import (
     quantise_gains,
 )
 
-
 # --------------------------------------------------------------------------------------
 # Friis cascade
 # --------------------------------------------------------------------------------------
@@ -33,7 +32,7 @@ def test_single_stage_noise_figure_is_its_own() -> None:
 def test_friis_matches_a_hand_worked_cascade() -> None:
     """F = F1 + (F2-1)/G1, worked by hand in linear noise factor."""
     chain = RfChain([Stage("lna", 20.0, 1.0), Stage("rx", 0.0, 8.0)])
-    f1, f2, g1 = 10 ** 0.1, 10 ** 0.8, 10 ** 2.0
+    f1, f2, g1 = 10**0.1, 10**0.8, 10**2.0
     expected = 10 * np.log10(f1 + (f2 - 1) / g1)
     assert chain.noise_figure_db == pytest.approx(expected, abs=1e-9)
 
@@ -56,12 +55,8 @@ def test_the_lna_is_what_buys_the_sensitivity() -> None:
 
 def test_loss_ahead_of_the_lna_costs_sensitivity_directly() -> None:
     """Why cable length before the LNA matters and after it barely does."""
-    before = RfChain(
-        [Stage("cable", -3.0, 3.0), Stage("lna", 20.0, 1.0), Stage("rx", 0.0, 8.0)]
-    )
-    after = RfChain(
-        [Stage("lna", 20.0, 1.0), Stage("cable", -3.0, 3.0), Stage("rx", 0.0, 8.0)]
-    )
+    before = RfChain([Stage("cable", -3.0, 3.0), Stage("lna", 20.0, 1.0), Stage("rx", 0.0, 8.0)])
+    after = RfChain([Stage("lna", 20.0, 1.0), Stage("cable", -3.0, 3.0), Stage("rx", 0.0, 8.0)])
     assert before.noise_figure_db > after.noise_figure_db + 2.5
 
 

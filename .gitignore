@@ -1,0 +1,36 @@
+# --- Secrets: never commit ---
+*.key
+*.pem
+*.crt
+.env
+config/calibration.local.yaml
+
+# --- Captured / generated signal data ---
+*.s16
+*.cs16
+*.cf32
+*.iq
+*.wav
+*.m4a
+!tests/data/**/*.cs16
+
+# --- Runtime output ---
+out/
+*.log
+*.jsonl
+*.sqlite
+*.db
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

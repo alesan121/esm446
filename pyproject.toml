@@ -16,6 +16,8 @@ dependencies = [
 
 [project.scripts]
 esm446-node = "esm446.cli.node:main"
+esm446-demo = "esm446.cli.demo:main"
+esm446-sim = "esm446.cli.simulate:main"
 esm446-bench = "esm446.bench:main"
 
 [tool.poetry]

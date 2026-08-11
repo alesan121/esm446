@@ -67,9 +67,9 @@ def test_false_alarm_rate_holds_across_noise_levels(method: str, noise_level: fl
     power = exponential_noise(rng, (4000, NUM_BINS), mean=noise_level)
 
     measured = detector.detection_mask(power).mean()
-    assert measured == pytest.approx(1e-3, rel=0.45), (
-        f"{method}-CFAR measured P_fa {measured:.2e} against a 1e-3 design point"
-    )
+    assert measured == pytest.approx(
+        1e-3, rel=0.45
+    ), f"{method}-CFAR measured P_fa {measured:.2e} against a 1e-3 design point"
 
 
 def test_fixed_threshold_fails_where_cfar_holds() -> None:

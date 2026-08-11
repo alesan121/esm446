@@ -1,0 +1,127 @@
+name: Python CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+    paths:
+      - "esm446/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "poetry.lock"
+      - ".github/workflows/python-ci.yaml"
+
+jobs:
+  validate-contribution:
+    name: Validate Code and Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Run Black
+        run: poetry run black --check .
+
+      - name: Run Ruff
+        run: poetry run ruff check .
+
+      - name: Run Flake8
+        run: poetry run pflake8 .
+
+      - name: Run unit tests with coverage
+        run: |
+          poetry run pytest \
+            --cov=esm446 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=80 \
+            -v
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
+
+      # The channeliser exists because v0 ran 9x slower than real time. A performance
+      # regression here is a functional regression, so it fails the build rather than
+      # being noticed later in a report nobody reruns.
+      - name: Verify channeliser meets the real-time budget
+        run: poetry run esm446-bench --skip-v0 --max-ratio 0.5
+
+      - name: Run Bandit
+        run: poetry run bandit -c pyproject.toml -r .
+
+      - name: Run Safety
+        continue-on-error: true
+        env:
+          SAFETY_API_KEY: ${{ secrets.SAFETY_API_KEY }}
+        run: poetry run safety scan
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy-scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "json"
+          output: "${{ github.workspace }}/trivy-results-${{ github.run_id }}.json"
+          exit-code: "1"
+          severity: "LOW,MEDIUM,HIGH,CRITICAL"
+          ignore-unfixed: false
+
+      - name: Upload Trivy results artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-results
+          path: "${{ github.workspace }}/trivy-results-${{ github.run_id }}.json"
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
+
+      - name: Run Google OSV Scanner
+        id: osv-scan
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --output=osv-scanner-results-${{ github.run_id }}.json
+            --format=json
+            -r .
+
+      - name: Upload OSV results artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: osv-results
+          path: "${{ github.workspace }}/osv-scanner-results-${{ github.run_id }}.json"
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7

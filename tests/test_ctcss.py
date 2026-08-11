@@ -49,9 +49,7 @@ def synthesise_emission(
 
     if snr_db is not None:
         noise_power = 10 ** (-snr_db / 10.0)
-        noise = np.sqrt(noise_power / 2) * (
-            rng.standard_normal(n) + 1j * rng.standard_normal(n)
-        )
+        noise = np.sqrt(noise_power / 2) * (rng.standard_normal(n) + 1j * rng.standard_normal(n))
         iq = (iq + noise).astype(np.complex64)
     return iq
 
@@ -96,9 +94,9 @@ def test_quantifies_the_two_v0_defects_separately() -> None:
     combined_loss_db = -20 * np.log10(v0_combined / exact)
 
     assert rounding_loss_db == pytest.approx(0.58, abs=0.1), "rounding alone is a mild loss"
-    assert combined_loss_db > 12.0, (
-        f"combined v0 error should be severe, measured {combined_loss_db:.1f} dB"
-    )
+    assert (
+        combined_loss_db > 12.0
+    ), f"combined v0 error should be severe, measured {combined_loss_db:.1f} dB"
 
 
 def test_goertzel_amplitude_is_calibrated() -> None:
@@ -119,9 +117,7 @@ def test_goertzel_separates_the_closest_tone_pair() -> None:
     t = np.arange(n) / rate
     signal = np.sin(2 * np.pi * low * t)
     magnitudes = goertzel(signal, np.array([low, high]), rate)
-    assert magnitudes[0] > 5.0 * magnitudes[1], (
-        f"{low} Hz leaked into the adjacent {high} Hz slot"
-    )
+    assert magnitudes[0] > 5.0 * magnitudes[1], f"{low} Hz leaked into the adjacent {high} Hz slot"
 
 
 # --------------------------------------------------------------------------------------

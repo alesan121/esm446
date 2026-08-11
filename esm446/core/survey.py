@@ -99,9 +99,9 @@ class SpectrumSurvey:
         # which window is chosen. Without this, changing the window silently rescales every
         # power measurement the node reports.
         self._window = (window / window.sum()).astype(np.float32)
-        self._frequencies = np.fft.fftshift(
-            np.fft.fftfreq(self.config.fft_size, d=1.0 / sample_rate)
-        ) + centre_hz
+        self._frequencies = (
+            np.fft.fftshift(np.fft.fftfreq(self.config.fft_size, d=1.0 / sample_rate)) + centre_hz
+        )
 
     @property
     def resolution_hz(self) -> float:

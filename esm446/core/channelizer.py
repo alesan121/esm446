@@ -114,19 +114,26 @@ class ChannelizerConfig:
 def design_prototype(config: ChannelizerConfig) -> np.ndarray:
     """Design the prototype lowpass filter for a channeliser.
 
-    The passband edge is half the channel spacing. The stopband edge is placed at the alias
-    limit — half the per-channel output rate — rather than at the passband edge, because
-    energy beyond that point is what actually folds into the channel output. Oversampling
-    therefore buys a genuine transition band instead of forcing a brick wall.
+    The -6 dB point goes at the **channel edge**, half the channel spacing, because that is
+    what the wanted signal occupies: a 12.5 kHz PMR446 emission is about 11 kHz wide, so the
+    filter has to pass roughly +/-5.5 kHz and nothing beyond it. Oversampling moves the
+    *alias* limit out to half the per-channel output rate, which is what gives the response
+    room to reach its stopband before energy starts folding back in.
+
+    Those two limits are easy to confuse, and confusing them is expensive. An earlier
+    revision placed the -6 dB point midway between the channel edge and the alias limit, on
+    the reasoning that this "used" the available transition band. It does — by passing the
+    inner half of the adjacent channel. Measured on a modulated emitter, adjacent-channel
+    rejection was **49.5 dB**; moving the cutoff back to the channel edge took it to
+    **92.9 dB**, at no CPU cost and with the wanted signal level unchanged. A strong emitter
+    had been producing spurious detections in both neighbouring bins, which is a
+    channeliser fault that looks exactly like a detector fault.
 
     Designed once, at construction. The v0 prototype rebuilt its filter inside the per-
     channel loop on every block.
     """
     nyquist = config.sample_rate / 2.0
-    passband_edge = config.channel_spacing / 2.0
-    alias_limit = config.channel_rate / 2.0
-    # Place the -6 dB point midway through the available transition region.
-    cutoff = (passband_edge + alias_limit) / 2.0 / nyquist
+    cutoff = (config.channel_spacing / 2.0) / nyquist
 
     beta = dsp.kaiser_beta(config.stopband_atten_db)
     taps = dsp.firwin(

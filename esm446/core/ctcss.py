@@ -88,10 +88,19 @@ CTCSS_TONES_HZ: tuple[float, ...] = (
 #: Sample rate the tone analysis runs at, after decimation (Hz).
 ANALYSIS_RATE_HZ = 1000.0
 
-#: Analysis window length in seconds. The closest tone spacing in the table is 3.5 Hz
-#: (203.5 to 210.7 is wider, but 67.0 to 71.9 and the dense middle run tighter), so a
-#: 1-second window giving 1 Hz resolution separates every pair with margin.
-WINDOW_SECONDS = 1.0
+#: Analysis window length in seconds.
+#:
+#: This is a trade between frequency resolution and how short an emission can be identified
+#: at all. The tightest spacing in the CTCSS table is 3.5 Hz, at 100.0 against 103.5. A
+#: half-second window resolves 2 Hz, which puts an interfering neighbour 1.75 bins off the
+#: target -- roughly 18 dB down through the window response, comfortably enough to tell them
+#: apart.
+#:
+#: Going to a full second would halve that leakage and buy nothing operationally, because
+#: with the two-window vote it would demand two seconds of continuous transmission before
+#: the detector would decide at all. A typical PMR446 over is a few seconds, so that would
+#: leave the shortest and most interesting emissions unidentified.
+WINDOW_SECONDS = 0.5
 
 
 def goertzel(samples: np.ndarray, frequencies: np.ndarray, sample_rate: float) -> np.ndarray:

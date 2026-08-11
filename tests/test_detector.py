@@ -72,6 +72,42 @@ def test_false_alarm_rate_holds_across_noise_levels(method: str, noise_level: fl
     ), f"{method}-CFAR measured P_fa {measured:.2e} against a 1e-3 design point"
 
 
+@pytest.mark.parametrize("interval", [1, 64, 256])
+def test_holding_the_noise_estimate_does_not_change_the_false_alarm_rate(interval: int) -> None:
+    """Pins the claim that makes OS-CFAR affordable.
+
+    Re-estimating the noise floor every frame costs 4.93 CPU-seconds per signal second and
+    allocates 101 MB per block. Holding the estimate for 64 frames -- 2.6 ms, far shorter
+    than any real change in a thermal noise floor -- costs 64x less. That is only legitimate
+    if the false alarm rate is unaffected, so it is measured here rather than argued.
+    """
+    rng = np.random.default_rng(99)
+    detector = CfarDetector(CfarConfig(pfa=1e-3, method="os", update_interval=interval))
+    power = exponential_noise(rng, (6000, NUM_BINS), mean=1.0)
+
+    measured = detector.detection_mask(power).mean()
+    assert measured == pytest.approx(
+        1e-3, rel=0.45
+    ), f"update_interval={interval} gave P_fa {measured:.2e} against a 1e-3 design point"
+
+
+def test_noise_estimate_is_held_between_updates() -> None:
+    """The estimate must actually be reused, not silently recomputed."""
+    rng = np.random.default_rng(4)
+    detector = CfarDetector(CfarConfig(update_interval=64))
+    power = exponential_noise(rng, (256, NUM_BINS), mean=1.0)
+
+    noise = detector.noise_estimate(power)
+    assert noise.shape == power.shape
+    np.testing.assert_array_equal(noise[0], noise[63])
+    assert not np.array_equal(noise[0], noise[64])
+
+
+def test_rejects_a_zero_update_interval() -> None:
+    with pytest.raises(ValueError, match="update_interval"):
+        CfarConfig(update_interval=0)
+
+
 def test_fixed_threshold_fails_where_cfar_holds() -> None:
     """Demonstrates the v0 failure mode rather than merely asserting it.
 

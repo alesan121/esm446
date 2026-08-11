@@ -138,6 +138,55 @@ def benchmark_pfb(seconds: float = 2.0) -> Result:
     )
 
 
+def benchmark_node(seconds: float = 2.0) -> Result:
+    """Measure the complete pipeline, not just the channeliser.
+
+    This exists because measuring the channeliser alone was actively misleading. The filter
+    bank ran at 0.19 CPU-seconds per signal second while the assembled node ran at 4.84 --
+    twenty-five times worse, and 4.8x slower than real time. All of it was the CFAR noise
+    estimate, and a benchmark that only covered the channeliser reported everything as
+    healthy.
+
+    A gate on one stage measures that stage. Only a gate on the whole pipeline measures
+    whether the node keeps up.
+    """
+    from esm446.core.channelizer import ChannelizerConfig
+    from esm446.core.node import EsmNode
+    from esm446.core.source import ArraySource
+
+    rng = np.random.default_rng(0)
+    total = int(seconds * SAMPLE_RATE)
+    t = np.arange(total) / SAMPLE_RATE
+
+    # A busy but realistic scene: two modulated emitters over a noise floor.
+    scene = (3e-4 * (rng.standard_normal(total) + 1j * rng.standard_normal(total))).astype(
+        np.complex64
+    )
+    for offset_hz, amplitude in ((-25_000.0, 0.05), (37_500.0, 0.02)):
+        deviation = 750.0 * np.sin(2 * np.pi * 700.0 * t)
+        phase = 2 * np.pi * np.cumsum(deviation) / SAMPLE_RATE
+        scene += (amplitude * np.exp(1j * (2 * np.pi * offset_hz * t + phase))).astype(np.complex64)
+
+    node = EsmNode(
+        channelizer_config=ChannelizerConfig(
+            sample_rate=SAMPLE_RATE, num_channels=NUM_CHANNELS, decimation=DECIMATION
+        ),
+        centre_frequency=bands.DEFAULT_CENTRE_HZ,
+    )
+
+    start = time.perf_counter()
+    node.run(ArraySource(scene, SAMPLE_RATE, bands.DEFAULT_CENTRE_HZ))
+    cpu = time.perf_counter() - start
+
+    return Result(
+        label="full node pipeline",
+        sample_rate=SAMPLE_RATE,
+        num_channels=NUM_CHANNELS,
+        signal_seconds=seconds,
+        cpu_seconds=cpu,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -155,6 +204,8 @@ def main(argv: list[str] | None = None) -> int:
         results.append(benchmark_v0())
     pfb = benchmark_pfb()
     results.append(pfb)
+    node = benchmark_node()
+    results.append(node)
 
     if args.json:
         print(json.dumps([asdict(r) | {"realtime_ratio": r.realtime_ratio} for r in results]))
@@ -162,13 +213,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Receiver centre {bands.DEFAULT_CENTRE_HZ / 1e6:.6f} MHz (PMR446 channel 8)\n")
         for result in results:
             print(result.describe())
-        if len(results) == 2:
-            speedup = results[0].realtime_ratio / results[1].realtime_ratio
-            print(f"\nSpeedup, normalised by signal duration: {speedup:.0f}x")
+        if not args.skip_v0:
+            speedup = results[0].realtime_ratio / pfb.realtime_ratio
+            print(f"\nChanneliser speedup, normalised by signal duration: {speedup:.0f}x")
 
-    if pfb.realtime_ratio > args.max_ratio:
+    # The node is what has to keep up, so it is what the budget applies to.
+    if node.realtime_ratio > args.max_ratio:
         print(
-            f"\nFAIL: {pfb.realtime_ratio:.4f} cpu-s/s exceeds budget {args.max_ratio}",
+            f"\nFAIL: node at {node.realtime_ratio:.4f} cpu-s/s exceeds budget "
+            f"{args.max_ratio}",
             file=sys.stderr,
         )
         return 1

@@ -31,6 +31,16 @@ MAX_DEVIATION_HZ = 2_500.0
 AUDIO_LOW_HZ = 250.0
 AUDIO_HIGH_HZ = 3_000.0
 
+#: Percentile used to report peak deviation.
+#:
+#: The literal maximum is not the right statistic. A transmitter keying on and off produces
+#: a phase step, and the discriminator turns a phase step into an enormous instantaneous
+#: frequency spike: on a synthetic emitter with 750 Hz of deviation the raw maximum read
+#: 12459 Hz, five times the ETSI limit, entirely from the two gate edges. A high percentile
+#: reports the deviation the emitter actually uses while modulating, which is the figure
+#: that discriminates one radio from another.
+PEAK_DEVIATION_PERCENTILE = 99.0
+
 
 def discriminate(iq: np.ndarray, sample_rate: float) -> np.ndarray:
     """Quadrature FM discriminator, returning instantaneous deviation in Hz.
@@ -97,10 +107,11 @@ class NfmDemodulator:
         deviation = discriminate(iq, self.sample_rate)
         if deviation.size == 0:
             return DemodResult(deviation, self.sample_rate, 0.0, 0.0)
+        magnitude = np.abs(deviation)
         return DemodResult(
             audio=deviation / MAX_DEVIATION_HZ,
             sample_rate=self.sample_rate,
-            peak_deviation_hz=float(np.abs(deviation).max()),
+            peak_deviation_hz=float(np.percentile(magnitude, PEAK_DEVIATION_PERCENTILE)),
             rms_deviation_hz=float(np.sqrt(np.mean(deviation**2))),
         )
 

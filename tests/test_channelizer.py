@@ -129,7 +129,7 @@ def test_adjacent_channel_rejection(channelizer: PolyphaseChannelizer) -> None:
 
     12.5 kHz-spaced channels share a transition band by construction, so the figure to
     check is rejection at the *adjacent channel centre*, which is where a real interferer
-    sits. The measured value is reported in the V&V report rather than assumed.
+    sits.
     """
     victim_bin = 8
     interferer_offset = np.fft.fftfreq(NUM_CHANNELS, d=1.0 / SAMPLE_RATE)[victim_bin + 1]
@@ -138,6 +138,41 @@ def test_adjacent_channel_rejection(channelizer: PolyphaseChannelizer) -> None:
     leaked = np.abs(settled[:, victim_bin]).mean()
     rejection_db = -20.0 * np.log10(leaked)
     assert rejection_db > 60.0, f"adjacent-channel rejection only {rejection_db:.1f} dB"
+
+
+def test_modulated_emitter_does_not_leak_into_adjacent_bins(
+    channelizer: PolyphaseChannelizer,
+) -> None:
+    """Pins the figure that drove the prototype cutoff back to the channel edge.
+
+    A pure tone at an adjacent bin centre sits exactly at the stopband edge and is rejected
+    well under almost any cutoff, so it hides the defect. A *modulated* emitter has skirts
+    that reach into the neighbour's transition band, and that is where a badly placed
+    cutoff shows up.
+
+    With the -6 dB point at the midpoint between the channel edge and the alias limit, this
+    measured 49.5 dB and a single emitter produced spurious detections in both neighbouring
+    bins. With the cutoff at the channel edge it is over 90 dB.
+    """
+    bin_index = 8
+    offset = np.fft.fftfreq(NUM_CHANNELS, d=1.0 / SAMPLE_RATE)[bin_index]
+    num_samples = 400_000
+    t = np.arange(num_samples) / SAMPLE_RATE
+
+    # Narrowband FM, 750 Hz deviation on a 700 Hz tone: a realistic PMR446 emission.
+    deviation = 750.0 * np.sin(2 * np.pi * 700.0 * t)
+    phase = 2 * np.pi * np.cumsum(deviation) / SAMPLE_RATE
+    signal = np.exp(1j * (2 * np.pi * offset * t + phase)).astype(np.complex64)
+
+    power = np.abs(channelizer.process(signal)[50:]) ** 2
+    wanted = power[:, bin_index].mean()
+    neighbours = max(power[:, bin_index - 1].mean(), power[:, bin_index + 1].mean())
+    rejection_db = 10.0 * np.log10(wanted / neighbours)
+
+    assert rejection_db > 85.0, (
+        f"modulated adjacent-channel rejection only {rejection_db:.1f} dB; "
+        f"a strong emitter will produce spurious detections either side of it"
+    )
 
 
 def test_streaming_matches_single_block(config: ChannelizerConfig) -> None:

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esm446"
+version = "0.1.0"
+description = "Passive Electronic Support Measures node for the PMR446 band"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.8",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# SoapySDR is intentionally NOT a dependency: it is a system package with a
+# compiled binding, and the entire test suite runs without it via the file and
+# simulated signal sources.
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+    "matplotlib>=3.5",
+]
+
+[project.scripts]
+esm446-node = "esm446.cli.node:main"
+esm446-bench = "esm446.bench:main"
+
+[tool.setuptools.packages.find]
+include = ["esm446*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+disallow_untyped_defs = true

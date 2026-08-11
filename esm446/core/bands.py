@@ -46,7 +46,22 @@ def channel_frequency(channel: int) -> int:
     return CHANNEL_1_HZ + (channel - 1) * CHANNEL_SPACING_HZ
 
 
-def channel_at(frequency_hz: float, tolerance_hz: float = 1.0) -> int | None:
+#: How far an emission may sit from a nominal channel centre and still be called that channel.
+#:
+#: Nothing obliges a transmitter to sit on the grid. Inexpensive handsets are routinely a few
+#: hundred hertz off nominal, and an emitter may be anywhere in the band by accident or by
+#: intent — which is a large part of why the whole 2 MHz is surveyed rather than only the 16
+#: nominal channels.
+#:
+#: So the tolerance has to be wide enough to absorb ordinary crystal error and narrow enough
+#: that a genuinely off-grid emitter is reported as off-grid rather than snapped to its
+#: nearest neighbour. 2 kHz is a sixth of the channel spacing: comfortably beyond handset
+#: drift, comfortably inside the 6.25 kHz that separates a channel centre from the midpoint
+#: between two.
+CHANNEL_MATCH_TOLERANCE_HZ = 2_000.0
+
+
+def channel_at(frequency_hz: float, tolerance_hz: float = CHANNEL_MATCH_TOLERANCE_HZ) -> int | None:
     """Return the PMR446 channel number at ``frequency_hz``, or ``None`` if off-grid.
 
     Off-grid emissions are not errors — surveying the band beyond the nominal 16 channels

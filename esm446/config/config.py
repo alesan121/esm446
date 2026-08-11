@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     CHANNELIZER_DECIMATION: int = 80
     CHANNELIZER_TAPS_PER_PHASE: int = 12
 
-    CFAR_PFA: float = Field(default=1e-4, gt=0.0, lt=1.0)
+    CFAR_PFA: float = Field(default=1e-8, gt=0.0, lt=1.0)
     CFAR_METHOD: str = "os"
 
     CTCSS_EXPECTED_TONE_HZ: float | None = None

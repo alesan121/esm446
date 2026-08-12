@@ -142,11 +142,24 @@ def test_file_source_reports_its_duration(tmp_path: Path) -> None:
         assert source.duration_seconds == pytest.approx(1.0)
 
 
+def test_file_source_scales_cs8_to_unit_full_scale(tmp_path: Path) -> None:
+    """cs8 is what hackrf_transfer writes, and the HackRF's ADC is 8-bit, so nothing is lost."""
+    raw = np.array([127, 0, -128, 0], dtype=np.int8)
+    path = tmp_path / "capture.cs8"
+    raw.tofile(path)
+
+    with FileSource(path, SAMPLE_RATE, CENTRE, "cs8") as source:
+        read = source.read(10)
+
+    assert read[0].real == pytest.approx(1.0, abs=0.01)
+    assert read[1].real == pytest.approx(-1.0, abs=0.01)
+
+
 def test_file_source_rejects_an_unknown_format(tmp_path: Path) -> None:
     path = tmp_path / "capture.bin"
     path.write_bytes(b"\x00" * 16)
     with pytest.raises(ValueError, match="sample_format"):
-        FileSource(path, SAMPLE_RATE, CENTRE, "cs8")
+        FileSource(path, SAMPLE_RATE, CENTRE, "cu8")
 
 
 def test_file_source_rejects_a_missing_file(tmp_path: Path) -> None:
@@ -221,6 +234,40 @@ def test_node_records_the_gains_with_every_report() -> None:
 
     assert reports[0].gains["lna_db"] == 32.0
     assert reports[0].gains["vga_db"] == 20.0
+
+
+def test_node_ignores_the_dc_bin() -> None:
+    """The receiver's own LO leaks to DC and would otherwise be a permanent emission.
+
+    Measured on a HackRF One the spur runs 31 dB above the noise floor and lasts as long as
+    the receiver is on, so without the guard the node reports one emission covering the whole
+    capture. The bin carries no external signal by construction.
+    """
+    n = int(1.5 * SAMPLE_RATE)
+    rng = np.random.default_rng(0)
+    noise = (3e-4 * (rng.standard_normal(n) + 1j * rng.standard_normal(n))).astype(np.complex64)
+    # A strong steady carrier at exactly the centre frequency: what LO leakage looks like.
+    scene = noise + np.full(n, 0.05, dtype=np.complex64)
+
+    assert build_node().run(ArraySource(scene, SAMPLE_RATE, CENTRE)) == []
+
+
+def test_dc_guard_can_be_disabled() -> None:
+    """Turning the guard off must restore the detection, or the test above proves nothing."""
+    n = int(1.5 * SAMPLE_RATE)
+    rng = np.random.default_rng(0)
+    noise = (3e-4 * (rng.standard_normal(n) + 1j * rng.standard_normal(n))).astype(np.complex64)
+    scene = noise + np.full(n, 0.05, dtype=np.complex64)
+
+    node = EsmNode(
+        channelizer_config=make_config(),
+        centre_frequency=CENTRE,
+        cfar_config=CfarConfig(pfa=1e-6, method="os"),
+        tracker=EmissionTracker(hangover_frames=200, min_frames=2_000),
+        dc_guard_bins=0,
+    )
+    reports = node.run(ArraySource(scene, SAMPLE_RATE, CENTRE))
+    assert [r.bin_index for r in reports] == [0]
 
 
 def test_node_reports_nothing_on_noise_alone() -> None:

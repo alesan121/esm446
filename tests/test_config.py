@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 _VALID_ENV = {
     "ESM446_SDR_SAMPLE_RATE_HZ": "2000000",
-    "ESM446_SDR_CENTRE_FREQ_HZ": "446093750",
+    "ESM446_SDR_CENTRE_FREQ_HZ": "446593750",
     "ESM446_CHANNELIZER_NUM_CHANNELS": "160",
     "ESM446_CHANNELIZER_DECIMATION": "80",
 }
@@ -39,7 +39,7 @@ def test_settings_accepts_the_default_receiver_geometry(settings_class) -> None:
     with patch.dict("os.environ", _VALID_ENV):
         settings = settings_class()
 
-    assert settings.SDR_CENTRE_FREQ_HZ == 446_093_750
+    assert settings.SDR_CENTRE_FREQ_HZ == 446_593_750
     assert settings.SDR_SAMPLE_RATE_HZ / settings.CHANNELIZER_NUM_CHANNELS == 12_500.0
 
 
@@ -76,6 +76,27 @@ def test_settings_rejects_the_v0_centre_frequency(settings_class) -> None:
     """v0 tuned 446.0935 MHz, 250 Hz off channel 8. The validator catches it."""
     with patch.dict("os.environ", {**_VALID_ENV, "ESM446_SDR_CENTRE_FREQ_HZ": "446093500"}):
         with pytest.raises(ValidationError, match="not an integer"):
+            settings_class()
+
+
+def test_settings_rejects_a_centre_frequency_on_a_nominal_channel(settings_class) -> None:
+    """The receiver's own DC spur sits at its centre frequency, measured at +31 dB.
+
+    Tuning to a channel therefore guarantees a permanent phantom emitter on it, and mirrors
+    every other channel onto another through IQ imbalance. Channel 8 was the original
+    default, chosen for grid alignment without weighing this, so it is the case worth
+    pinning.
+    """
+    with patch.dict("os.environ", {**_VALID_ENV, "ESM446_SDR_CENTRE_FREQ_HZ": "446093750"}):
+        with pytest.raises(ValidationError, match="PMR446 channel 8"):
+            settings_class()
+
+
+@pytest.mark.parametrize("channel_hz", ["446006250", "446193750"])
+def test_settings_rejects_every_nominal_channel_as_a_centre(settings_class, channel_hz) -> None:
+    """The first and last channels are on the grid too, so they pass the alignment check."""
+    with patch.dict("os.environ", {**_VALID_ENV, "ESM446_SDR_CENTRE_FREQ_HZ": channel_hz}):
+        with pytest.raises(ValidationError, match="DC spur"):
             settings_class()
 
 

@@ -106,6 +106,7 @@ class EsmNode:
         gains: HackrfGains | None = None,
         expected_ctcss_hz: float | None = None,
         tracker: EmissionTracker | None = None,
+        dc_guard_bins: int = 1,
     ) -> None:
         self.config = channelizer_config
         self.centre_frequency = centre_frequency
@@ -117,6 +118,7 @@ class EsmNode:
         self.calibration = calibration or PowerCalibration()
         self.gains = gains
         self.expected_ctcss_hz = expected_ctcss_hz
+        self.dc_guard_bins = dc_guard_bins
         self._bin_frequencies = bands.bin_frequencies(
             centre_frequency, channelizer_config.sample_rate, channelizer_config.num_channels
         )
@@ -153,6 +155,17 @@ class EsmNode:
         power = (np.abs(spectra) ** 2).astype(np.float64)
         noise = self.detector.noise_estimate(power)
         mask = power > noise * self.detector.threshold_factor
+
+        # Bin 0 is DC, and a direct-conversion receiver leaks its own local oscillator
+        # there. Measured on a HackRF One that spur runs 31 dB above the noise floor and is
+        # present for as long as the receiver is on, so without this the node reports one
+        # permanent emission of unlimited duration. The bin carries no external signal by
+        # construction, and offset tuning has already placed it outside the allocation, so
+        # excluding it costs nothing.
+        if self.dc_guard_bins > 0:
+            mask[:, : self.dc_guard_bins] = False
+            if self.dc_guard_bins > 1:
+                mask[:, -(self.dc_guard_bins - 1) :] = False
 
         emissions = self.tracker.update(spectra, power, mask, noise)
         self.frames_processed += spectra.shape[0]

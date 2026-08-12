@@ -25,6 +25,7 @@ from esm446.core.detector import CfarConfig
 from esm446.core.node import DEFAULT_BLOCK_SIZE, EsmNode
 from esm446.core.rfchain import quantise_gains
 from esm446.core.source import FileSource, IQSource
+from esm446.io.sinks import open_sink
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,11 @@ def main(argv: list[str] | None = None) -> int:
         help="sample format of --file (default: cf32)",
     )
     parser.add_argument(
+        "--store",
+        type=Path,
+        help="persist emissions to a .jsonl, .db or .sqlite file, appending to it",
+    )
+    parser.add_argument(
         "--block-size",
         type=int,
         default=DEFAULT_BLOCK_SIZE,
@@ -134,8 +140,18 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     node = build_node()
-    for report in node.run(source, block_size=args.block_size):
-        print(json.dumps(report.as_dict()), flush=True)
+    try:
+        sink = open_sink(args.store)
+    except ValueError as error:
+        logger.error("node: %s", error)
+        return 1
+
+    try:
+        for report in node.run(source, block_size=args.block_size, sink=sink):
+            print(json.dumps(report.as_dict()), flush=True)
+    finally:
+        if sink is not None:
+            sink.close()
     return 0
 
 

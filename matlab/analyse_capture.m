@@ -66,7 +66,12 @@ function results = analyse_capture(path, varargin)
     ch_over_db = zeros(16, 1);
     for k = 1:16
         [~, idx] = min(abs(freqs_hz - ch_freqs(k)));
-        lo = max(1, idx - 4); hi = min(numel(power_db), idx + 4);
+        % Half a channel either side. A wider window reads the skirt of a strong neighbour
+        % and reports it as activity on this channel, which is a measurement artefact and
+        % not an emission: at plus or minus 4 bins the window is 15.6 kHz across, wider than
+        % the 12.5 kHz channel it claims to measure.
+        half = max(1, round(6250 / (p.sample_rate_hz / p.fft_size)));
+        lo = max(1, idx - half); hi = min(numel(power_db), idx + half);
         ch_over_db(k) = max(power_db(lo:hi)) - noise_floor_db;
     end
 

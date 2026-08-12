@@ -1,0 +1,13 @@
+{
+  "note": "Two of the operator's own handsets transmitting simultaneously: PMR446 channel 8 with CTCSS 114.8 Hz and channel 3 with CTCSS 141.3 Hz, both at minimum power 3 m from the receiver, antennas cross-polarised, HackRF One with LNA and VGA at 0 dB.",
+  "source": "dos_emisores_011025.cs8",
+  "source_centre_hz": 446593750.0,
+  "source_rate_hz": 2000000.0,
+  "start_s": 22.5,
+  "duration_s": 5.0,
+  "centre_hz": 445981250,
+  "sample_rate_hz": 500000,
+  "num_channels": 40,
+  "format": "cs8",
+  "scale_peak": 0.07287677377462387
+}

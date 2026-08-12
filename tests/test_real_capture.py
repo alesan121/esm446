@@ -105,3 +105,81 @@ def test_the_vector_is_not_saturated() -> None:
     """A clipped recording would make every power figure taken from it fiction."""
     raw = np.fromfile(VECTOR, dtype=np.int8, count=2_000_000)
     assert np.abs(raw).max() <= 127
+
+
+# --------------------------------------------------------------------------------------
+# Two simultaneous emitters
+# --------------------------------------------------------------------------------------
+
+TWO = Path("tests/data/pmr446_two_emitters.cs8")
+TWO_METADATA = Path("tests/data/pmr446_two_emitters.json")
+
+
+@pytest.fixture(scope="module")
+def two_emitter_reports() -> list:
+    if not TWO.exists():
+        pytest.skip("two-emitter vector not present")
+    metadata = json.loads(TWO_METADATA.read_text())
+    node = EsmNode(
+        channelizer_config=ChannelizerConfig(
+            sample_rate=metadata["sample_rate_hz"],
+            num_channels=metadata["num_channels"],
+            decimation=metadata["num_channels"] // 2,
+        ),
+        centre_frequency=metadata["centre_hz"],
+        gains=quantise_gains(0.0, 0.0),
+        expected_ctcss_hz=114.8,
+    )
+    reports = node.run(FileSource(TWO, metadata["sample_rate_hz"], metadata["centre_hz"], "cs8"))
+    return [r for r in reports if r.snr_db > 15.0]
+
+
+def test_both_emitters_are_separated(two_emitter_reports: list) -> None:
+    """Two handsets transmitting at once, on channels five apart, recorded together.
+
+    Everything before this was one emitter at a time or a simulation. This is the case the
+    channeliser exists for.
+    """
+    channels = {r.pmr_channel for r in two_emitter_reports}
+    assert channels == {3, 8}
+
+
+def test_neither_emitter_masks_the_other(two_emitter_reports: list) -> None:
+    """The reason OS-CFAR is the default rather than CA-CFAR, on real signals.
+
+    A strong emitter inside the reference window inflates a cell-averaged noise estimate and
+    hides its neighbour. Both are detected here with comparable SNR, so neither was masked.
+    """
+    assert len(two_emitter_reports) == 2
+    assert all(r.snr_db > 25.0 for r in two_emitter_reports)
+
+
+def test_they_overlap_in_time(two_emitter_reports: list) -> None:
+    """Simultaneity is the point; two emissions in sequence would prove nothing."""
+    first, second = sorted(two_emitter_reports, key=lambda r: r.timestamp)
+    overlap = min(first.timestamp + first.duration_s, second.timestamp + second.duration_s) - max(
+        first.timestamp, second.timestamp
+    )
+    assert overlap > 2.0
+
+
+def test_the_tones_distinguish_friend_from_unknown(two_emitter_reports: list) -> None:
+    """Cooperative identification with two real emitters carrying different tones.
+
+    The 141.3 Hz tone was identified by the node before the operator confirmed what the
+    second handset had been set to, which is the only way this counts as a test rather than a
+    check that the answer was known in advance.
+    """
+    by_channel = {r.pmr_channel: r for r in two_emitter_reports}
+
+    assert by_channel[8].ctcss_tone_hz == pytest.approx(114.8)
+    assert by_channel[8].classification == "FRIEND"
+
+    assert by_channel[3].ctcss_tone_hz == pytest.approx(141.3)
+    assert by_channel[3].classification == "UNKNOWN"
+
+
+def test_the_two_emitter_vector_is_small_enough_to_commit() -> None:
+    if not TWO.exists():
+        pytest.skip("two-emitter vector not present")
+    assert TWO.stat().st_size < 5 * 1024 * 1024

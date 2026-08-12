@@ -13,6 +13,7 @@ on:
     paths:
       - "esm446/**"
       - "tests/**"
+      - "matlab/**"
       - "pyproject.toml"
       - "poetry.lock"
       - ".github/workflows/python-ci.yaml"
@@ -73,6 +74,12 @@ jobs:
       # being noticed later in a report nobody reruns.
       - name: Verify channeliser meets the real-time budget
         run: poetry run esm446-bench --skip-v0 --max-ratio 0.5
+
+      # Octave is what the MATLAB analysis scripts are verified against, and
+      # tests/test_matlab_consistency.py compares their figures with the Python. Without it
+      # those tests skip, and a divergence between the two derivations would go unnoticed.
+      - name: Install Octave
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends octave
 
       - name: Run Bandit
         run: poetry run bandit -c pyproject.toml -r .

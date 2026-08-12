@@ -62,6 +62,21 @@ _COLUMNS = (
     "amp_enabled",
 )
 
+#: The insert statement, written out rather than assembled from `_COLUMNS`.
+#:
+#: Building SQL by interpolation is a habit worth not having even where the inputs are
+#: compile-time constants, because the next person to touch it may pass something that is
+#: not. Writing it literally removes the construct entirely instead of annotating it away,
+#: and `test_sinks.py` asserts that the statement and `_COLUMNS` agree so the two cannot
+#: drift apart.
+_INSERT_SQL = """
+    INSERT INTO emissions (
+        timestamp, frequency_hz, pmr_channel, bin_index, duration_s, peak_power_dbfs,
+        snr_db, estimated_dbm, calibrated, ctcss_tone_hz, classification,
+        peak_deviation_hz, lna_db, vga_db, amp_enabled
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
 
 def _flatten(report: EmissionReport) -> dict[str, Any]:
     """Flatten a report into one row, lifting the gains out of their nested dictionary.
@@ -191,10 +206,7 @@ class SqliteSink(EmissionSink):
         if not reports:
             return 0
         rows = [tuple(_flatten(r).get(c) for c in _COLUMNS) for r in reports]
-        placeholders = ", ".join("?" * len(_COLUMNS))
-        self._connection.executemany(
-            f"INSERT INTO emissions ({', '.join(_COLUMNS)}) VALUES ({placeholders})", rows
-        )
+        self._connection.executemany(_INSERT_SQL, rows)
         self._connection.commit()
         return len(rows)
 

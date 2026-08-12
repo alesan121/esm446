@@ -13,6 +13,8 @@ import pytest
 
 from esm446.core.node import EmissionReport
 from esm446.io.sinks import (
+    _COLUMNS,
+    _INSERT_SQL,
     EmissionSink,
     JsonlSink,
     MultiSink,
@@ -213,3 +215,18 @@ def test_open_sink_chooses_by_extension(tmp_path: Path) -> None:
 def test_open_sink_rejects_an_unknown_extension(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="jsonl"):
         open_sink(tmp_path / "e.parquet")
+
+
+def test_the_insert_statement_matches_the_column_tuple() -> None:
+    """The insert is written literally rather than assembled, so it can drift from _COLUMNS.
+
+    Bandit is right to dislike SQL built by interpolation even where every input is a
+    compile-time constant, so the statement is spelled out -- and this is what stops the two
+    definitions disagreeing silently, which would misfile every column after the first
+    mismatch.
+    """
+    inside = _INSERT_SQL.split("(", 1)[1].split(")", 1)[0]
+    named = tuple(name.strip() for name in inside.replace("\n", " ").split(",") if name.strip())
+
+    assert named == _COLUMNS
+    assert _INSERT_SQL.count("?") == len(_COLUMNS)

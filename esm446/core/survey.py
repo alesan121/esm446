@@ -50,11 +50,16 @@ class SurveyConfig:
             two tones a bin apart: a strong local emitter must not smear across the band
             and hide weak ones. Its -92 dB sidelobes buy that at the cost of a wider main
             lobe, which is the right trade here and the wrong one for the filter bank.
+        chunk_frames: Frames transformed at a time when averaging. The average is what the
+            caller wants; the full spectrogram is an intermediate nobody asked for, and at
+            2 MS/s a 90-second capture makes that intermediate 2.9 GB. Accumulating in
+            chunks keeps the working set at a few tens of megabytes whatever the length.
     """
 
     fft_size: int = 1024
     overlap: float = 0.5
     window: str = "blackmanharris"
+    chunk_frames: int = 4096
 
     def __post_init__(self) -> None:
         if self.fft_size < 16 or self.fft_size & (self.fft_size - 1):
@@ -108,18 +113,40 @@ class SpectrumSurvey:
         """Frequency resolution of the survey (Hz per bin)."""
         return self.sample_rate / self.config.fft_size
 
-    def spectrogram(self, iq: np.ndarray) -> np.ndarray:
+    def frame_count(self, num_samples: int) -> int:
+        """Number of STFT frames a capture of this length would produce."""
+        size, hop = self.config.fft_size, self.config.hop
+        return 0 if num_samples < size else (num_samples - size) // hop + 1
+
+    def spectrogram(self, iq: np.ndarray, max_frames: int = 8192) -> np.ndarray:
         """Power spectrogram, shape ``(frames, fft_size)``, in linear power, fftshifted.
 
-        This is the waterfall behind the occupancy plots in the V&V report.
+        This is the waterfall behind the occupancy plots in the V&V report, and it is the
+        expensive path: the result is ``frames x fft_size`` and nothing reduces it.
+
+        Frames beyond ``max_frames`` are decimated in time rather than dropped, so a long
+        capture still yields a waterfall spanning the whole recording. Decimating is the
+        right answer for a plot that will be rendered a thousand pixels wide anyway, and
+        the alternative -- allocating 2.9 GB for a 90-second capture, as this did before --
+        takes the machine down.
+
+        Args:
+            iq: Complex baseband samples.
+            max_frames: Upper bound on the frames returned.
+
+        Returns:
+            Power spectrogram, at most ``max_frames`` rows.
         """
         size, hop = self.config.fft_size, self.config.hop
-        if len(iq) < size:
+        num_frames = self.frame_count(len(iq))
+        if num_frames == 0:
             return np.zeros((0, size), dtype=np.float32)
 
-        num_frames = (len(iq) - size) // hop + 1
-        frames = np.lib.stride_tricks.sliding_window_view(iq, size)[::hop][:num_frames]
-        spectra = sfft.fft(frames * self._window, axis=1)
+        stride = max(1, num_frames // max_frames)
+        windows = np.lib.stride_tricks.sliding_window_view(iq, size)[:: hop * stride]
+        windows = windows[: min(num_frames, max_frames)]
+
+        spectra = sfft.fft(windows * self._window, axis=1)
         return np.fft.fftshift(np.abs(spectra) ** 2, axes=1).astype(np.float32)
 
     def analyse(self, iq: np.ndarray) -> SurveyResult:
@@ -131,17 +158,29 @@ class SpectrumSurvey:
         under half the band is occupied — a safe assumption for PMR446 and one worth
         stating rather than assuming.
         """
-        spectrogram = self.spectrogram(iq)
-        if spectrogram.shape[0] == 0:
-            empty = np.full(self.config.fft_size, -np.inf)
+        size, hop = self.config.fft_size, self.config.hop
+        num_frames = self.frame_count(len(iq))
+        if num_frames == 0:
+            empty = np.full(size, -np.inf)
             return SurveyResult(self._frequencies, empty, -np.inf, 0)
 
-        mean_power = spectrogram.mean(axis=0)
+        # Accumulate the average over chunks. Building the whole spectrogram first and then
+        # reducing it needs 2.9 GB for a 90-second capture at 2 MS/s, which is how this took
+        # a machine down; the answer wanted is the average, and an average does not need its
+        # own summands kept.
+        windows = np.lib.stride_tricks.sliding_window_view(iq, size)[::hop][:num_frames]
+        total = np.zeros(size, dtype=np.float64)
+        for start in range(0, num_frames, self.config.chunk_frames):
+            block = windows[start : start + self.config.chunk_frames]
+            spectra = sfft.fft(block * self._window, axis=1)
+            total += (np.abs(spectra) ** 2).sum(axis=0)
+
+        mean_power = np.fft.fftshift(total / num_frames)
         with np.errstate(divide="ignore"):
             power_db = 10.0 * np.log10(mean_power)
         return SurveyResult(
             frequencies_hz=self._frequencies,
             power_db=power_db,
             noise_floor_db=float(np.median(power_db)),
-            num_frames=int(spectrogram.shape[0]),
+            num_frames=int(num_frames),
         )

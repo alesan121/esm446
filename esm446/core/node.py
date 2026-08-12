@@ -242,12 +242,20 @@ class EsmNode:
         centroid = weighted / total if total else 0.0
         return float(self._bin_frequencies[strongest.bin_index] + centroid * spacing)
 
-    def run(self, source: IQSource, block_size: int = DEFAULT_BLOCK_SIZE) -> list[EmissionReport]:
+    def run(
+        self,
+        source: IQSource,
+        block_size: int = DEFAULT_BLOCK_SIZE,
+        sink: Any | None = None,
+    ) -> list[EmissionReport]:
         """Consume a source to exhaustion and return every emission found.
 
         Args:
             source: Where the IQ comes from. The node cannot tell live capture from replay.
             block_size: Complex samples read per iteration.
+            sink: Optional `esm446.io.sinks.EmissionSink`. Records are written as they
+                complete rather than at the end, so a capture killed after an hour keeps
+                the hour rather than losing it.
 
         Returns:
             Every emission report produced, in completion order.
@@ -262,9 +270,17 @@ class EsmNode:
                 if block is None:
                     break
                 if block.size:
-                    reports.extend(self.process_block(block))
+                    batch = self.process_block(block)
+                    if batch:
+                        reports.extend(batch)
+                        if sink is not None:
+                            sink.write(batch)
 
-        reports.extend(self.flush())
+        final = self.flush()
+        if final:
+            reports.extend(final)
+            if sink is not None:
+                sink.write(final)
 
         elapsed = time.perf_counter() - started
         signal_seconds = self.frames_processed / self.config.channel_rate

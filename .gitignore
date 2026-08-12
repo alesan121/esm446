@@ -9,10 +9,12 @@ config/calibration.local.yaml
 *.s16
 *.cs16
 *.cf32
+*.cs8
 *.iq
 *.wav
 *.m4a
 !tests/data/**/*.cs16
+!tests/data/**/*.cs8
 
 # --- Runtime output ---
 out/

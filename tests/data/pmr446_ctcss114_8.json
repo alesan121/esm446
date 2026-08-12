@@ -1,0 +1,13 @@
+{
+  "note": "Operator's own PMR446 transmission: channel 8, CTCSS 114.8 Hz, handset at minimum power 3 m from the receiver, antennas cross-polarised, HackRF One with LNA and VGA at 0 dB. Carrier drops at about 4.15 s into the extract.",
+  "source": "vector_20260813_003804_3m_lna0_vga0.cs8",
+  "source_centre_hz": 446593750.0,
+  "source_rate_hz": 2000000.0,
+  "start_s": 21.0,
+  "duration_s": 5.0,
+  "centre_hz": 445981250,
+  "sample_rate_hz": 500000,
+  "num_channels": 40,
+  "format": "cs8",
+  "scale_peak": 0.08171382546424866
+}

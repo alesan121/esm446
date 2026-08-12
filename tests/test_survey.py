@@ -124,3 +124,45 @@ def test_block_shorter_than_the_transform_yields_nothing(survey: SpectrumSurvey)
 def test_rejects_a_non_power_of_two_transform() -> None:
     with pytest.raises(ValueError, match="power of two"):
         SurveyConfig(fft_size=1000)
+
+
+def test_analyse_does_not_hold_the_whole_spectrogram(survey: SpectrumSurvey) -> None:
+    """The bug that took a machine down: averaging by materialising every frame first.
+
+    A 90-second capture at 2 MS/s produced 352k frames, and holding them as complex64 needed
+    2.9 GB on top of the 1.4 GB of IQ. The average is what the caller wants, and an average
+    does not need its summands kept.
+
+    Ten seconds is enough to be far past the old chunk size while keeping the test quick.
+    """
+    n = int(10 * SAMPLE_RATE)
+    rng = np.random.default_rng(0)
+    noise = (1e-3 * (rng.standard_normal(n) + 1j * rng.standard_normal(n))).astype(np.complex64)
+
+    result = survey.analyse(noise + tone(125_000.0, n, amplitude=0.2))
+
+    assert result.num_frames == survey.frame_count(n)
+    assert result.num_frames > 30_000, "the test must exercise the chunked path"
+    peak_hz, _ = result.peak()
+    assert peak_hz == pytest.approx(bands.DEFAULT_CENTRE_HZ + 125_000.0, abs=survey.resolution_hz)
+
+
+def test_chunked_average_matches_a_single_pass(survey: SpectrumSurvey) -> None:
+    """Chunking must not change the answer, only the memory it takes to get there."""
+    signal = tone(50_000.0, 200_000) + tone(-125_000.0, 200_000, amplitude=0.3)
+
+    chunked = survey.analyse(signal)
+    one_pass = SpectrumSurvey(
+        SAMPLE_RATE, bands.DEFAULT_CENTRE_HZ, SurveyConfig(chunk_frames=10**9)
+    ).analyse(signal)
+
+    np.testing.assert_allclose(chunked.power_db, one_pass.power_db, atol=1e-4)
+
+
+def test_waterfall_is_capped_rather_than_allocating_gigabytes(survey: SpectrumSurvey) -> None:
+    """The waterfall decimates in time, so a long capture still spans the whole recording."""
+    n = int(10 * SAMPLE_RATE)
+    spectrogram = survey.spectrogram(tone(0.0, n), max_frames=512)
+
+    assert spectrogram.shape[0] <= 512
+    assert spectrogram.shape[1] == survey.config.fft_size

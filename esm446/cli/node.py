@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--format",
         default="cf32",
-        choices=["cf32", "cs16"],
+        choices=["cf32", "cs16", "cs8"],
         help="sample format of --file (default: cf32)",
     )
     parser.add_argument(

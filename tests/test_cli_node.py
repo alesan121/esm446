@@ -84,7 +84,7 @@ def test_cli_rejects_an_unknown_sample_format(tmp_path: Path) -> None:
     path = tmp_path / "scene.cf32"
     path.write_bytes(b"\x00" * 64)
     with pytest.raises(SystemExit):
-        main(["--file", str(path), "--format", "cs8"])
+        main(["--file", str(path), "--format", "cu8"])
 
 
 def test_cli_requires_a_mode(tmp_path: Path) -> None:

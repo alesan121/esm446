@@ -30,6 +30,12 @@ _PMR446_CHANNEL_1_HZ = 446_006_250
 #: Channel spacing of the analogue PMR446 allocation (Hz).
 _PMR446_SPACING_HZ = 12_500
 
+#: Number of analogue PMR446 channels.
+_PMR446_CHANNEL_COUNT = 16
+
+#: Offset-tuned receiver centre frequency (Hz). Mirrors `esm446.core.bands.DEFAULT_CENTRE_HZ`.
+_DEFAULT_CENTRE_HZ = 446_593_750
+
 
 class Settings(BaseSettings):
     """Node configuration, populated from the environment or a `.env` file.
@@ -68,7 +74,7 @@ class Settings(BaseSettings):
 
     SDR_DRIVER: str = "hackrf"
     SDR_SAMPLE_RATE_HZ: int = 2_000_000
-    SDR_CENTRE_FREQ_HZ: int = 446_093_750
+    SDR_CENTRE_FREQ_HZ: int = 446_593_750
     SDR_LNA_GAIN_DB: int = 32
     SDR_VGA_GAIN_DB: int = 20
     SDR_AMP_ENABLED: bool = False
@@ -152,7 +158,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"SDR_CENTRE_FREQ_HZ {self.SDR_CENTRE_FREQ_HZ} is {steps:.4f} channel "
                 f"steps from PMR446 channel 1, not an integer; every channel would land "
-                f"off its bin centre. Use 446093750 (channel 8)."
+                f"off its bin centre. Use {_DEFAULT_CENTRE_HZ} Hz."
+            )
+
+        # A direct-conversion receiver leaks its local oscillator into the mixer, so a spur
+        # sits at the centre frequency permanently -- measured at 31 dB above the noise floor
+        # on a HackRF One. Tuning to a nominal channel therefore guarantees a phantom emitter
+        # on it, and additionally mirrors every channel onto another through IQ imbalance.
+        if 0 <= round(steps) < _PMR446_CHANNEL_COUNT:
+            raise ValueError(
+                f"SDR_CENTRE_FREQ_HZ {self.SDR_CENTRE_FREQ_HZ} is PMR446 channel "
+                f"{round(steps) + 1}. The receiver's own DC spur would sit on it. "
+                f"Offset-tune instead: {_DEFAULT_CENTRE_HZ} Hz stays on the 12.5 kHz grid "
+                f"but places the spur outside the allocation."
             )
 
         logger.debug(

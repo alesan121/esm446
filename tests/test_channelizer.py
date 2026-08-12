@@ -67,13 +67,47 @@ def test_prototype_has_unit_dc_gain(channelizer: PolyphaseChannelizer) -> None:
 
 
 def test_every_pmr_channel_lands_exactly_on_a_bin() -> None:
-    """The reason the receiver is tuned to channel 8 rather than the band midpoint."""
+    """Grid alignment: every channel must land exactly on a bin, and none on bin 0."""
     seen = {}
     for channel in range(1, bands.CHANNEL_COUNT + 1):
         index = bands.channel_bin_index(channel, bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS)
         seen[channel] = index
     assert len(set(seen.values())) == bands.CHANNEL_COUNT, "channels collided onto one bin"
-    assert seen[8] == 0, "channel 8 is the tuned centre, so it must be bin 0"
+    # Bin 0 is DC, where the receiver's own local-oscillator leakage lands. No channel may
+    # occupy it, which is why the centre frequency is offset-tuned out of the allocation.
+    assert 0 not in seen.values(), "a channel sits on the DC bin, where the LO spur lives"
+
+
+def test_the_dc_bin_is_not_a_pmr_channel() -> None:
+    """Offset tuning, checked where it matters: at bin 0.
+
+    A direct-conversion receiver puts a spur at its own centre frequency -- measured at
+    +31 dB above the noise floor on a HackRF One. If that frequency is a nominal channel,
+    the node reports a phantom emitter on it forever.
+    """
+    frequencies = bands.bin_frequencies(bands.DEFAULT_CENTRE_HZ, SAMPLE_RATE, NUM_CHANNELS)
+    assert bands.channel_at(frequencies[0]) is None
+
+
+def test_every_iq_image_falls_outside_the_allocation() -> None:
+    """IQ imbalance mirrors each signal about DC; the mirrors must not land on channels.
+
+    With the centre inside the allocation they did: channel 9 mirrored onto channel 7.
+    """
+    for channel in range(1, bands.CHANNEL_COUNT + 1):
+        image = bands.image_frequency(bands.channel_frequency(channel), bands.DEFAULT_CENTRE_HZ)
+        assert (
+            bands.channel_at(image) is None
+        ), f"channel {channel} mirrors onto channel {bands.channel_at(image)}"
+
+
+def test_a_channel_is_refused_as_a_centre_frequency() -> None:
+    with pytest.raises(ValueError, match="phantom emitter"):
+        bands.assert_centre_is_usable(bands.channel_frequency(8))
+
+
+def test_the_default_centre_is_accepted() -> None:
+    bands.assert_centre_is_usable(bands.DEFAULT_CENTRE_HZ)
 
 
 def test_band_midpoint_is_rejected_as_centre_frequency() -> None:

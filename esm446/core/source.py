@@ -18,12 +18,14 @@ Sample formats
 `FileSource` reads the two formats this project actually encounters:
 
 - ``cf32`` — interleaved 32-bit floats, what SoapySDR delivers and what the simulator emits.
-- ``cs16`` — interleaved signed 16-bit integers, what the PortaPack records to its SD card,
-  scaled by 1/32768 on read so that full scale is unity and bin power stays interpretable as
-  dBFS.
+- ``cs16`` — interleaved signed 16-bit integers, what the PortaPack records to its SD card.
+- ``cs8`` — interleaved signed 8-bit integers, what ``hackrf_transfer`` writes. This is the
+  HackRF's native format: the ADC is 8-bit, so nothing is lost, and it is the capture path
+  that works without a SoapySDR binding for the running Python version.
 
-Getting that scaling wrong is silent: the pipeline runs, detection works, and every power
-figure is off by 90 dB.
+Each is scaled so that full scale reads unity, which is what keeps bin power interpretable as
+dBFS. Getting that scaling wrong is silent: the pipeline runs, detection works, and every
+power figure is out by tens of dB.
 """
 
 from __future__ import annotations
@@ -37,13 +39,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#: Scale factor converting signed 16-bit samples to unit full scale.
-_INT16_FULL_SCALE = 32768.0
-
-#: Sample formats `FileSource` understands, mapped to their numpy dtype.
-SAMPLE_FORMATS: dict[str, np.dtype] = {
-    "cf32": np.dtype(np.float32),
-    "cs16": np.dtype(np.int16),
+#: Sample formats `FileSource` understands, mapped to their numpy dtype and the divisor that
+#: brings them to unit full scale.
+SAMPLE_FORMATS: dict[str, tuple[np.dtype, float]] = {
+    "cf32": (np.dtype(np.float32), 1.0),
+    "cs16": (np.dtype(np.int16), 32768.0),
+    "cs8": (np.dtype(np.int8), 128.0),
 }
 
 
@@ -110,7 +111,7 @@ class FileSource(IQSource):
         self.sample_rate = sample_rate
         self.centre_frequency = centre_frequency
         self.sample_format = sample_format
-        self._dtype = SAMPLE_FORMATS[sample_format]
+        self._dtype, self._full_scale = SAMPLE_FORMATS[sample_format]
         self._handle = self.path.open("rb")
 
         logger.info(
@@ -141,8 +142,8 @@ class FileSource(IQSource):
             raw = raw[:-1]
 
         interleaved = raw.astype(np.float32)
-        if self._dtype == np.int16:
-            interleaved /= _INT16_FULL_SCALE
+        if self._full_scale != 1.0:
+            interleaved /= self._full_scale
         return interleaved.view(np.complex64)
 
     def close(self) -> None:

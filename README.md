@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 409 tests
+poetry run pytest                    # 420 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -183,7 +183,7 @@ that would invite exactly the wrong question.
 | 2 | Scenario simulator and recorded IQ test vectors | merged |
 | 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | merged |
 | 4 | Two-emitter acceptance test merged; calibration blocked ([#41](https://github.com/alesan121/esm446/issues/41)) | partial |
-| 5 | Systems-engineering documentation and V&V report | planned |
+| 5 | Systems-engineering documentation and V&V report | in progress |
 | 6 | Packaging: hardware-free demo and results | planned |
 
 ## License

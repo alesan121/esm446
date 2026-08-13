@@ -197,3 +197,46 @@ def test_the_blocked_requirement_is_the_one_we_expect(requirements: list[Require
     blocked = [r.id for r in requirements if r.status.startswith("BLOCKED")]
 
     assert blocked == ["REQ-CAL-004"], f"unexpected blocked requirements: {blocked}"
+
+
+# --------------------------------------------------------------------------------------
+# The V&V report agrees with the requirements it reports on
+# --------------------------------------------------------------------------------------
+
+VV_REPORT = Path("docs/05_vv_report.md")
+
+
+def test_the_vv_report_totals_match_the_requirements(requirements: list[Requirement]) -> None:
+    """Two documents counting the same thing will disagree eventually unless something checks.
+
+    The V&V report opens with a count and closes with a table of counts. Both are read from
+    the requirements document by a human, which is exactly the kind of transcription that
+    goes stale the first time a requirement is added.
+    """
+    if not VV_REPORT.exists():
+        pytest.skip("V&V report not present")
+    report = VV_REPORT.read_text(encoding="utf-8")
+
+    counts = {status: 0 for status in VALID_STATUSES}
+    for requirement in requirements:
+        counts[requirement.status.split()[0].split("—")[0].strip()] += 1
+
+    assert f"**{len(requirements)} requirements**" in report or (
+        f"{len(requirements)} requirements" in report
+    ), f"the report does not state the true total of {len(requirements)}"
+    for status, count in counts.items():
+        assert (
+            f"{count} {status}" in report
+        ), f"the report does not state {count} {status} requirements"
+
+
+def test_the_vv_report_totals_row_adds_up(requirements: list[Requirement]) -> None:
+    """The summary table's total row, checked against the rows above it."""
+    if not VV_REPORT.exists():
+        pytest.skip("V&V report not present")
+    report = VV_REPORT.read_text(encoding="utf-8")
+
+    match = re.search(r"\|\s*\*\*Total\*\*\s*\|\s*\*\*(\d+)\*\*", report)
+    assert match, "no total row found in the traceability summary"
+
+    assert int(match.group(1)) == len(requirements)

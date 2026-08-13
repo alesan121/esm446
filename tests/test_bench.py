@@ -60,3 +60,53 @@ def test_json_output_is_machine_readable(capsys: pytest.CaptureFixture[str]) -> 
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["num_channels"] == 160
     assert payload[0]["realtime_ratio"] > 0.0
+
+
+# --------------------------------------------------------------------------------------
+# The verification figures
+# --------------------------------------------------------------------------------------
+
+
+def test_the_vv_figures_regenerate_from_scratch(tmp_path) -> None:
+    """A figure nobody can regenerate is a claim, not evidence.
+
+    Runs the whole set into a temporary directory, which is also the only way to know the
+    report's plots still come from a system that behaves the way the report says.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    from esm446.vv import generate
+
+    results = generate(tmp_path)
+
+    expected = {
+        "adjacent_channel_rejection_db",
+        "worst_case_scalloping_db",
+        "coverage",
+        "node_cpu_s_per_s",
+    }
+    assert expected <= set(results)
+    assert len(list(tmp_path.glob("*.png"))) == 6
+    assert (tmp_path / "results.json").exists()
+
+
+def test_the_generated_figures_still_meet_the_requirements(tmp_path) -> None:
+    """The report quotes these. If the system regresses, the quoted figures must fail here.
+
+    Loose bounds on purpose: this guards against a regression, not against the last decimal,
+    which the dedicated tests in test_channelizer.py and test_geolocation.py pin properly.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    from esm446.vv import generate
+
+    results = generate(tmp_path)
+
+    assert results["adjacent_channel_rejection_db"] > 60.0, "REQ-FUN-002"
+    assert results["worst_case_scalloping_db"] == pytest.approx(-6.02, abs=0.2), "REQ-FUN-004"
+    assert results["node_cpu_s_per_s"] < 0.5, "REQ-PER-001"
+    assert 90.0 < results["coverage"]["95"] < 99.0, "REQ-CAL-005"

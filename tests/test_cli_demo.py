@@ -153,3 +153,18 @@ def test_the_shipped_scenario_detects_everything_it_transmits() -> None:
         result.probability_of_detection == 1.0
     ), f"the shipped demonstration misses {len(truth) - result.num_detected} of {len(truth)}"
     assert result.spurious == []
+
+
+def test_the_demonstration_writes_the_artefacts_it_advertises(tmp_path: Path) -> None:
+    """`make demo` promises a waterfall and a dashboard, and the README shows both."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    from esm446.cli.demo import main
+
+    assert main(["--quiet", "--json", "--out", str(tmp_path)]) == 0
+
+    assert (tmp_path / "waterfall.png").stat().st_size > 10_000
+    page = (tmp_path / "dashboard.html").read_text(encoding="utf-8")
+    assert "<html" in page and "never communication content" in page

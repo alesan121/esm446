@@ -17,7 +17,12 @@
     "95": 95.3
   },
   "coverage_trials": 300,
-  "pfb_cpu_s_per_s": 0.212,
-  "node_cpu_s_per_s": 0.2624,
+  "pfb_cpu_s_per_s": 0.173,
+  "node_cpu_s_per_s": 0.226,
+  "node_cpu_s_per_s_range": [
+    0.225,
+    0.34
+  ],
+  "benchmark_runs": 5,
   "v0_cpu_s_per_s": 6.9
 }

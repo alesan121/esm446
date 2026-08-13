@@ -42,6 +42,11 @@ PROCESSING_GAIN_DB = 10.0 * np.log10(CONFIG.num_channels)
 
 FREQUENCY_HZ = 446_093_750.0
 
+#: Benchmark repetitions behind the throughput figure. Wall-clock timing of this pipeline
+#: varies by tens of per cent with machine load, so the reported number is a median and the
+#: observed range is published beside it.
+_BENCHMARK_RUNS = 5
+
 
 def _style(axis: Any, title: str, xlabel: str, ylabel: str) -> None:
     """Apply the one consistent look every figure uses."""
@@ -266,17 +271,31 @@ def figure_interval_coverage(results: dict[str, Any]) -> None:
 
 
 def figure_benchmark(results: dict[str, Any]) -> None:
-    """Where the time goes, against the v0 baseline."""
+    """Where the time goes, against the v0 baseline.
+
+    Reported as the median of `_BENCHMARK_RUNS` runs. See the comment below for why one run
+    is not enough.
+    """
     import matplotlib.pyplot as plt
+
+    import statistics
 
     from esm446.bench import benchmark_node, benchmark_pfb
 
-    pfb = benchmark_pfb(seconds=2.0)
-    node = benchmark_node(seconds=2.0)
+    # The median of several runs, not one. A single wall-clock measurement of this pipeline
+    # varies by up to 45 % with machine load, and quoting one of those as "the" figure is
+    # false precision -- it is how the same repository ended up claiming 0.21 in one document
+    # and 0.26 in another. The spread is reported alongside so the variance is visible rather
+    # than averaged away.
+    runs = _BENCHMARK_RUNS
+    pfb_ratios = sorted(benchmark_pfb(seconds=2.0).realtime_ratio for _ in range(runs))
+    node_ratios = sorted(benchmark_node(seconds=2.0).realtime_ratio for _ in range(runs))
+    pfb_ratio = statistics.median(pfb_ratios)
+    node_ratio = statistics.median(node_ratios)
     v0_ratio = 6.9
 
     labels = ["v0 per-channel\nmixer + filter", "polyphase\nfilter bank", "full node\npipeline"]
-    ratios = [v0_ratio, pfb.realtime_ratio, node.realtime_ratio]
+    ratios = [v0_ratio, pfb_ratio, node_ratio]
     colours = ["tab:red", "tab:blue", "tab:green"]
 
     figure, axis = plt.subplots(figsize=(6.5, 4))
@@ -303,8 +322,10 @@ def figure_benchmark(results: dict[str, Any]) -> None:
     figure.savefig(FIGURES / "06_throughput.png", dpi=130)
     plt.close(figure)
 
-    results["pfb_cpu_s_per_s"] = round(pfb.realtime_ratio, 4)
-    results["node_cpu_s_per_s"] = round(node.realtime_ratio, 4)
+    results["pfb_cpu_s_per_s"] = round(pfb_ratio, 3)
+    results["node_cpu_s_per_s"] = round(node_ratio, 3)
+    results["node_cpu_s_per_s_range"] = [round(node_ratios[0], 3), round(node_ratios[-1], 3)]
+    results["benchmark_runs"] = runs
     results["v0_cpu_s_per_s"] = v0_ratio
 
 

@@ -107,3 +107,39 @@ def test_cli_surfaces_a_missing_sdr_stack_as_an_error(
     except ImportError:
         assert main(["--sdr"]) == 1
         assert capsys.readouterr().out == ""
+
+
+def test_cli_publishes_cot_to_the_configured_destination(tmp_path: Path) -> None:
+    """The end of the chain a recruiter or an integrator actually cares about.
+
+    IQ in one end, a Cursor-on-Target track out the other, with no SDR and no TAK server --
+    just a socket that records what arrived.
+    """
+    import socket
+
+    from esm446.cli.node import main
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.settimeout(5.0)
+    host, port = listener.getsockname()
+
+    try:
+        path = write_scene(tmp_path / "scene.cf32", channel=7)
+        assert main(["--file", str(path), "--cot", f"udp://{host}:{port}"]) == 0
+
+        datagram = listener.recvfrom(65535)[0].decode("utf-8")
+    finally:
+        listener.close()
+
+    assert "<event" in datagram
+    assert 'type="a-u-G"' in datagram, "no pre-shared tone is configured, so unknown"
+    assert 'ce="9999999.0"' in datagram, "no calibration, so the range must stay unknown"
+    assert "bearing not measured" in datagram
+
+
+def test_cli_rejects_an_unusable_cot_destination(tmp_path: Path) -> None:
+    from esm446.cli.node import main
+
+    path = write_scene(tmp_path / "scene.cf32", channel=7)
+    assert main(["--file", str(path), "--cot", "smtp://127.0.0.1:25"]) == 1

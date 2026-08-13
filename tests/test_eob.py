@@ -23,7 +23,7 @@ from esm446.core.node import EmissionReport
 from esm446.io.sinks import SqliteSink
 from esm446.sim.scenario import Emitter, Propagation, Scenario, Transmission
 
-#: 2026-08-13 09:00:00 UTC, so hour binning has a value to land on.
+#: 2026-08-17 07:00:00 UTC, so hour binning has a value to land on.
 BASE_TIME = 1_786_950_000.0
 
 

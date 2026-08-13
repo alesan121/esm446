@@ -25,7 +25,9 @@ from esm446.core.detector import CfarConfig
 from esm446.core.node import DEFAULT_BLOCK_SIZE, EsmNode
 from esm446.core.rfchain import quantise_gains
 from esm446.core.source import FileSource, IQSource
-from esm446.io.sinks import open_sink
+from esm446.io.cot import ReceiverSite
+from esm446.io.cot_transport import CotSink, open_transport
+from esm446.io.sinks import EmissionSink, MultiSink, open_sink
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,52 @@ def build_source(args: argparse.Namespace) -> IQSource:
     )
 
 
+def build_sink(args: argparse.Namespace) -> EmissionSink | None:
+    """Assemble everywhere emissions should go.
+
+    The archive and the TAK feed are both sinks, so the node has one call site for both and
+    the same failure policy applies to each: a destination that breaks is logged and skipped,
+    because losing the feed or the archive is bad and losing the capture is worse.
+
+    Args:
+        args: Parsed command line arguments.
+
+    Returns:
+        A sink, or ``None`` when neither a store nor a feed was configured.
+
+    Raises:
+        ValueError: If a destination cannot be interpreted.
+    """
+    destinations: list[EmissionSink] = []
+
+    store = open_sink(args.store)
+    if store is not None:
+        destinations.append(store)
+
+    if args.cot:
+        destinations.append(
+            CotSink(
+                transport=open_transport(args.cot),
+                site=ReceiverSite(
+                    latitude=settings.COT_LATITUDE,
+                    longitude=settings.COT_LONGITUDE,
+                    altitude_m=settings.COT_ALTITUDE_M,
+                    callsign=settings.COT_CALLSIGN,
+                ),
+                stale_s=settings.COT_STALE_S,
+            )
+        )
+        if (settings.COT_LATITUDE, settings.COT_LONGITUDE) == (0.0, 0.0):
+            logger.warning(
+                "node: publishing CoT with the receiver at 0N 0E; set ESM446_COT_LATITUDE "
+                "and ESM446_COT_LONGITUDE or every track lands in the Gulf of Guinea"
+            )
+
+    if not destinations:
+        return None
+    return destinations[0] if len(destinations) == 1 else MultiSink(destinations)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the node.
 
@@ -124,6 +172,11 @@ def main(argv: list[str] | None = None) -> int:
         help="persist emissions to a .jsonl, .db or .sqlite file, appending to it",
     )
     parser.add_argument(
+        "--cot",
+        default=settings.COT_DESTINATION,
+        help="publish Cursor-on-Target to udp://host:port, tcp://host:port or tls://host:port",
+    )
+    parser.add_argument(
         "--block-size",
         type=int,
         default=DEFAULT_BLOCK_SIZE,
@@ -141,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
 
     node = build_node()
     try:
-        sink = open_sink(args.store)
+        sink = build_sink(args)
     except ValueError as error:
         logger.error("node: %s", error)
         return 1

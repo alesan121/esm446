@@ -20,6 +20,7 @@ esm446-demo = "esm446.cli.demo:main"
 esm446-sim = "esm446.cli.simulate:main"
 esm446-extract = "esm446.cli.extract_vector:main"
 esm446-eob = "esm446.cli.eob:main"
+esm446-cot-server = "esm446.cli.cot_server:main"
 esm446-bench = "esm446.bench:main"
 
 [tool.poetry]
@@ -37,6 +38,7 @@ dev = [
     "pytest>=9.1.1,<10.0.0",
     "pytest-cov>=6.0.0,<7.0.0",
     "matplotlib>=3.10.0,<4.0.0",
+    "xmlschema (>=4.3.2,<5.0.0)",
 ]
 
 [build-system]

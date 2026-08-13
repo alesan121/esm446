@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 348 tests
+poetry run pytest                    # 395 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -88,6 +88,33 @@ a measurement of the transmitter's spectral purity, and that is a discriminant w
 SNR with no symmetric partner and no relation to either carrier. It is probably splatter too.
 It is not called splatter, because the arithmetic does not say so.
 
+## Sensor to C2
+
+Emissions are published as Cursor-on-Target, so a TAK client draws them. Transport is chosen
+by configuration — UDP, TCP, TLS, or a TLS server for iTAK to dial into — and the message is
+built once, so the wire cannot change what a consumer sees.
+
+```bash
+poetry run esm446-node --file capture.cs8 --format cs8 --cot udp://192.168.1.20:4242
+```
+
+```xml
+<event version="2.0" uid="ESM446.PMR8.114.8" type="a-f-G" how="m-c" ...>
+  <point lat="40.4168000" lon="-3.7038000" hae="0.0" ce="9999999.0" le="9999999.0"/>
+  ...
+```
+
+**`ce="9999999.0"` is the interesting part.** A single omnidirectional antenna measures range,
+not bearing, so there is no emitter position to send. CoT already has the right field: the
+point is the *receiver's*, and `ce` is the radius the emitter lies within — which renders as
+an accuracy circle rather than a confident pin. With no power calibration there is not even a
+radius, so `ce` carries CoT's sentinel for unknown. A default of `0` would have drawn a
+pinpoint fix on the receiver: precise, and wrong.
+
+The interface is specified in [`docs/03_icd_cot.md`](docs/03_icd_cot.md) — messages, units,
+cadence, staleness, behaviour on loss, and a section on what a consumer must **not** conclude
+from a track. Every claim in it is tied to a test.
+
 ## Why it was rebuilt
 
 The v0 prototype, preserved verbatim in [`legacy/`](legacy/), produced output. It did not
@@ -153,7 +180,7 @@ that would invite exactly the wrong question.
 | 0 | Secure repository baseline | merged |
 | 1 | DSP core, detection, identification, in-process pipeline | merged |
 | 2 | Scenario simulator and recorded IQ test vectors | merged |
-| 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | in progress |
+| 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | merged |
 | 4 | Two-emitter acceptance test merged; calibration blocked ([#41](https://github.com/alesan121/esm446/issues/41)) | partial |
 | 5 | Systems-engineering documentation and V&V report | planned |
 | 6 | Packaging: hardware-free demo and results | planned |

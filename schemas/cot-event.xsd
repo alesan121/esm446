@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Cursor-on-Target base event schema.
+
+  Transcribed from the CoT base message description so that the events this system produces
+  can be validated in CI rather than eyeballed. It covers the event envelope and the point,
+  which is where the interface actually lives: every attribute below has a defined meaning
+  and a unit, and getting one wrong produces a message a TAK client silently misreads.
+
+  `detail` is deliberately unconstrained, which is how CoT itself treats it: it is the
+  extension point, and every producer puts its own sub-schema in there. What this system puts
+  in it is specified in docs/03_icd_cot.md, not here.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <xs:element name="event">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="point" type="PointType"/>
+        <xs:element name="detail" type="DetailType" minOccurs="0"/>
+      </xs:sequence>
+
+      <!-- CoT schema version. -->
+      <xs:attribute name="version" type="xs:decimal" use="required"/>
+
+      <!-- Globally unique identity of the thing this event is about. Stable across
+           updates: a second event with the same uid updates the first. -->
+      <xs:attribute name="uid" type="xs:string" use="required"/>
+
+      <!-- Hierarchical type. a-f-G is affiliation friend, battle dimension ground;
+           u-d-r is a drawing, a range ring. -->
+      <xs:attribute name="type" type="xs:string" use="required"/>
+
+      <!-- When the message was formed. -->
+      <xs:attribute name="time" type="xs:dateTime" use="required"/>
+
+      <!-- When the information became valid. -->
+      <xs:attribute name="start" type="xs:dateTime" use="required"/>
+
+      <!-- When it stops being current. A consumer discards the event after this. -->
+      <xs:attribute name="stale" type="xs:dateTime" use="required"/>
+
+      <!-- How the position was arrived at. m-c is machine, calculated. -->
+      <xs:attribute name="how" type="xs:string"/>
+
+      <xs:attribute name="access" type="xs:string"/>
+      <xs:attribute name="opex" type="xs:string"/>
+      <xs:attribute name="qos" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="PointType">
+    <!-- Degrees, WGS-84. -->
+    <xs:attribute name="lat" type="xs:double" use="required"/>
+    <xs:attribute name="lon" type="xs:double" use="required"/>
+
+    <!-- Height above the WGS-84 ellipsoid, metres. -->
+    <xs:attribute name="hae" type="xs:double" use="required"/>
+
+    <!-- Circular error at 1 sigma, metres. 9999999.0 means unknown. -->
+    <xs:attribute name="ce" type="xs:double" use="required"/>
+
+    <!-- Linear (vertical) error, metres. 9999999.0 means unknown. -->
+    <xs:attribute name="le" type="xs:double" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="DetailType">
+    <xs:sequence>
+      <xs:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:anyAttribute processContents="skip"/>
+  </xs:complexType>
+
+</xs:schema>

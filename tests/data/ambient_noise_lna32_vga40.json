@@ -1,0 +1,14 @@
+{
+  "note": "Ambient band noise at high gain, with no emission anywhere in it: the only bin above the floor is the receiver's own local-oscillator spur, and no PMR446 channel carries anything. At this gain the converter no longer dominates and the environment's impulsive, non-stationary noise becomes visible -- which is what made the held noise estimate produce eight twenty-second phantom emissions.",
+  "centre_hz": 446593750.0,
+  "sample_rate_hz": 2000000.0,
+  "num_channels": 160,
+  "duration_s": 1.1,
+  "format": "cs8",
+  "gains": {
+    "lna_db": 32.0,
+    "vga_db": 40.0,
+    "amp_enabled": false
+  },
+  "antenna": "telescopic whip, 16.8 cm"
+}

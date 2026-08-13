@@ -91,16 +91,49 @@ def test_holding_the_noise_estimate_does_not_change_the_false_alarm_rate(interva
     ), f"update_interval={interval} gave P_fa {measured:.2e} against a 1e-3 design point"
 
 
-def test_noise_estimate_is_held_between_updates() -> None:
-    """The estimate must actually be reused, not silently recomputed."""
+def test_the_shape_is_held_between_updates_and_the_level_is_not() -> None:
+    """The estimate is separated into a shape and a level, and only one of them is held.
+
+    The shape across bins comes from the filters and does not move, so recomputing it every
+    frame costs 4.93 CPU-seconds per signal second for nothing. The level moves with the
+    receiver on a timescale far shorter than the hold, and holding it too is what produced
+    eight phantom emissions on the first ambient capture -- see
+    `tests/test_false_alarm_on_real_noise.py`.
+
+    So within one interval the normalised shape must be identical while the absolute level
+    need not be, and across an interval boundary the shape must change.
+    """
     rng = np.random.default_rng(4)
     detector = CfarDetector(CfarConfig(update_interval=64))
     power = exponential_noise(rng, (256, NUM_BINS), mean=1.0)
 
     noise = detector.noise_estimate(power)
     assert noise.shape == power.shape
-    np.testing.assert_array_equal(noise[0], noise[63])
-    assert not np.array_equal(noise[0], noise[64])
+
+    def shape(frame: np.ndarray) -> np.ndarray:
+        return frame / frame.mean()
+
+    np.testing.assert_allclose(shape(noise[0]), shape(noise[63]), rtol=1e-12)
+    assert not np.allclose(shape(noise[0]), shape(noise[64]))
+
+
+def test_holding_the_shape_still_saves_the_work_it_was_meant_to() -> None:
+    """The optimisation must survive the fix: only one order statistic per interval."""
+    rng = np.random.default_rng(4)
+    power = exponential_noise(rng, (256, NUM_BINS), mean=1.0)
+
+    detector = CfarDetector(CfarConfig(update_interval=64))
+    calls = {"n": 0}
+    original = detector._noise_estimate_exact
+
+    def counted(block):
+        calls["n"] += 1
+        return original(block)
+
+    detector._noise_estimate_exact = counted
+    detector.noise_estimate(power)
+
+    assert calls["n"] == 1, "the expensive estimate ran more than once per block"
 
 
 def test_rejects_a_zero_update_interval() -> None:

@@ -24,7 +24,7 @@ available, with the blocker named. Nothing is marked met on the strength of an i
 |---|---|---|---|---|
 | REQ-FUN-001 | The node shall split the sampled band into uniformly spaced channels matching the 12.5 kHz PMR446 raster. | T | `test_channel_bin_mapping_agrees_with_python` | MET |
 | REQ-FUN-002 | Each channel filter shall reject an emission on an adjacent channel by at least 60 dB. | T | `test_adjacent_channel_rejection` | MET |
-| REQ-FUN-003 | The node shall detect emissions at a stated, configurable probability of false alarm, independent of the noise level. | T | `test_false_alarm_rate_holds_across_noise_levels` | MET |
+| REQ-FUN-003 | The node shall detect emissions at a stated, configurable probability of false alarm, independent of the noise level. | T | `test_false_alarm_rate_holds_across_noise_levels`, `test_pure_receiver_noise_produces_no_false_alarms`, `test_tracking_the_level_cuts_the_rate_on_ambient_noise` | PARTIAL — design 1e-8. Met on synthetic noise across nine orders of magnitude, and no crossing at all measured on real receiver noise; on a real band at high gain the rate is 8e-6, because the environment is neither Gaussian nor stationary |
 | REQ-FUN-004 | The node shall report the sensitivity penalty for an emitter offset from a channel centre. | A, T | `test_the_worst_case_is_six_decibels_at_the_bin_edge` | MET |
 | REQ-FUN-005 | The node shall identify the sub-audible CTCSS tone of an emission from the 38-tone standard table. | T | `test_identifies_every_kind_of_tone_through_the_full_chain` | MET |
 | REQ-FUN-006 | The node shall classify an emission as FRIEND only when its tone matches the configured pre-shared code, and UNKNOWN otherwise. | T | `test_the_tones_distinguish_friend_from_unknown` | MET |
@@ -44,8 +44,8 @@ available, with the blocker named. Nothing is marked met on the strength of an i
 
 | ID | Requirement | Method | Verified by | Status |
 |---|---|---|---|---|
-| REQ-PER-001 | The node shall process 2 MS/s across 160 channels in real time with a margin of at least 2x on the development machine. | T | `test_main_succeeds_within_a_generous_budget` | MET — median of five runs 0.23 CPU-s/s, 4.4x |
-| REQ-PER-002 | The channeliser shall cost no more than 0.5 CPU-seconds per signal second. | T | `test_pfb_benchmark_keeps_up_with_real_time` | MET — median of five runs 0.17 |
+| REQ-PER-001 | The node shall process 2 MS/s across 160 channels in real time with a margin of at least 2x on the development machine. | T | `test_main_succeeds_within_a_generous_budget` | MET — median of five runs 0.26 CPU-s/s, 3.9x |
+| REQ-PER-002 | The channeliser shall cost no more than 0.5 CPU-seconds per signal second. | T | `test_pfb_benchmark_keeps_up_with_real_time` | MET — median of five runs 0.20 |
 | REQ-PER-003 | The wideband survey shall cost no more than 5 % of the channeliser. | T | `test_analyse_does_not_hold_the_whole_spectrogram` | MET — measured 0.009 |
 | REQ-PER-004 | Memory use shall not scale with capture length. | T | `test_waterfall_is_capped_rather_than_allocating_gigabytes` | MET |
 | REQ-PER-005 | The false alarm rate shall not change when the noise estimate is held between frames. | T | `test_holding_the_noise_estimate_does_not_change_the_false_alarm_rate` | MET |

@@ -37,7 +37,7 @@ from typing import Any
 import numpy as np
 
 from esm446.core import bands
-from esm446.core.calibration import PowerCalibration, linear_to_dbfs
+from esm446.core.calibration import PowerCalibration
 from esm446.core.channelizer import ChannelizerConfig, PolyphaseChannelizer
 from esm446.core.ctcss import CtcssDetector
 from esm446.core.demod import NfmDemodulator
@@ -70,6 +70,9 @@ class EmissionReport:
         calibrated: Whether ``estimated_dbm`` is backed by a measured calibration.
         ctcss_tone_hz: Identified sub-audible tone, or ``None``.
         classification: ``FRIEND`` or ``UNKNOWN`` against the configured pre-shared tone.
+        offset_s: Seconds from the start of the capture. Carried alongside the absolute
+            time so a detection can be located in a recording without arithmetic, which is
+            what two test vectors were cut from the wrong place for want of.
         peak_deviation_hz: Peak FM deviation, an emitter discriminant.
         gains: Receiver gain configuration in force, without which the power figures
             cannot be calibrated after the fact.
@@ -86,6 +89,7 @@ class EmissionReport:
     calibrated: bool
     ctcss_tone_hz: float | None
     classification: str
+    offset_s: float
     peak_deviation_hz: float
     gains: dict[str, Any] = field(default_factory=dict)
 
@@ -260,7 +264,9 @@ class EsmNode:
         Returns:
             Every emission report produced, in completion order.
         """
-        self._start_time = time.time()
+        # The capture's own start time, not the clock now. Replaying a recording must not
+        # relabel it with when it was analysed.
+        self._start_time = getattr(source, "start_time", None) or time.time()
         reports: list[EmissionReport] = []
         started = time.perf_counter()
 
@@ -329,8 +335,10 @@ class EsmNode:
             self.calibration.to_dbm(peak_dbfs, self.gains) if self.gains is not None else None
         )
 
+        offset_s = emission.start_frame / self.config.channel_rate
         report = EmissionReport(
-            timestamp=self._start_time + emission.start_frame / self.config.channel_rate,
+            timestamp=self._start_time + offset_s,
+            offset_s=offset_s,
             frequency_hz=frequency_hz,
             pmr_channel=bands.channel_at(frequency_hz),
             bin_index=emission.bin_index,
@@ -355,8 +363,3 @@ class EsmNode:
             classification,
         )
         return report
-
-
-def power_to_dbfs(power_linear: np.ndarray) -> np.ndarray:
-    """Convert linear bin power to dBFS. Thin re-export for callers of this module."""
-    return linear_to_dbfs(power_linear)

@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 171 tests
+poetry run pytest                    # 266 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -44,7 +44,7 @@ work in the sense that matters, and the defects are measured rather than asserte
 
 | Defect | Measured | Now |
 |---|---|---|
-| Channeliser slower than real time | **8.66** CPU-s per signal second | **0.19** |
+| Channeliser slower than real time | **6.9** CPU-s per signal second | **0.17** |
 | Sample rate below the HackRF minimum | 800 kS/s requested, 2 MS/s minimum | rejected at startup |
 | Receiver gains never applied | `8` passed as the channel index | quantised and read back |
 | Audio sample-rate mismatch | 12121.2 Hz produced, 12000 assumed | derived, not restated |
@@ -63,12 +63,16 @@ Measured by `esm446-bench` on the development machine, at 2 MS/s over 160 channe
 
 | | CPU-s per signal second | Margin |
 |---|---|---|
-| v0 per-channel mixer and filter, 800 kS/s, 57 channels | 8.66 | **drops signal** |
-| Polyphase filter bank | 0.19 | 5.1× real time |
-| Full node pipeline | 0.26 | 3.9× real time |
+| v0 per-channel mixer and filter, 800 kS/s, 57 channels | 6.9 | **drops signal** |
+| Polyphase filter bank | 0.17 | 6× real time |
+| Full node pipeline | 0.21 | 5× real time |
 
-The channeliser is **44× faster than v0 normalised by signal duration**, while covering 2.5×
-the bandwidth and 2.8× the channels.
+The channeliser is roughly **41× faster than v0 normalised by signal duration**, while
+covering 2.5× the bandwidth and 2.8× the channels.
+
+These are wall-clock figures and move with machine load, so treat them as approximate and
+reproduce them with `poetry run esm446-bench`. CI gates on the measurement rather than on
+this table, which is what stops the two drifting apart.
 
 ## Design notes
 
@@ -97,9 +101,9 @@ that would invite exactly the wrong question.
 |---|---|---|
 | 0 | Secure repository baseline | merged |
 | 1 | DSP core, detection, identification, in-process pipeline | merged |
-| 2 | Scenario simulator and recorded IQ test vectors | next |
-| 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | planned |
-| 4 | Conducted calibration and two-emitter acceptance test | planned |
+| 2 | Scenario simulator and recorded IQ test vectors | merged |
+| 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | in progress |
+| 4 | Two-emitter acceptance test merged; calibration blocked ([#41](https://github.com/alesan121/esm446/issues/41)) | partial |
 | 5 | Systems-engineering documentation and V&V report | planned |
 | 6 | Packaging: hardware-free demo and results | planned |
 

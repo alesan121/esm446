@@ -56,6 +56,7 @@ _COLUMNS = (
     "calibrated",
     "ctcss_tone_hz",
     "classification",
+    "offset_s",
     "peak_deviation_hz",
     "lna_db",
     "vga_db",
@@ -72,9 +73,9 @@ _COLUMNS = (
 _INSERT_SQL = """
     INSERT INTO emissions (
         timestamp, frequency_hz, pmr_channel, bin_index, duration_s, peak_power_dbfs,
-        snr_db, estimated_dbm, calibrated, ctcss_tone_hz, classification,
+        snr_db, estimated_dbm, calibrated, ctcss_tone_hz, classification, offset_s,
         peak_deviation_hz, lna_db, vga_db, amp_enabled
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 
@@ -191,6 +192,7 @@ class SqliteSink(EmissionSink):
                 calibrated        INTEGER NOT NULL,
                 ctcss_tone_hz     REAL,
                 classification    TEXT    NOT NULL,
+                offset_s          REAL    NOT NULL,
                 peak_deviation_hz REAL    NOT NULL,
                 lna_db            REAL,
                 vga_db            REAL,

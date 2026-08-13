@@ -51,10 +51,6 @@ CHANNEL_COUNT = 16
 #: allocation. See the module docstring for the measurements behind it.
 DEFAULT_CENTRE_HZ = 446_593_750
 
-#: Offset of the default centre from the top of the allocation (Hz). Wide enough that the DC
-#: spur's skirts and the low-frequency noise around it do not reach channel 16.
-DEFAULT_CENTRE_OFFSET_HZ = 400_000
-
 #: Nominal occupied bandwidth of a 12.5 kHz NFM PMR446 emission (Hz).
 #: ETSI EN 300 296 permits max 2.5 kHz deviation; Carson's rule with 3 kHz audio gives
 #: 2 * (2.5 + 3.0) = 11 kHz.

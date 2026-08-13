@@ -51,6 +51,8 @@ import numpy as np
 import scipy.fft as sfft
 from scipy import signal as dsp
 
+from esm446.core.bands import OCCUPIED_BANDWIDTH_HZ
+
 #: Frames processed per fold pass. The accumulator for a whole 0.13 s block is ~16 MB and
 #: streams out of cache on every one of the K passes; chunking it keeps the working set
 #: resident. Measured: 0.198 -> 0.161 CPU-s per signal second at 2 MS/s.
@@ -115,8 +117,8 @@ def design_prototype(config: ChannelizerConfig) -> np.ndarray:
     """Design the prototype lowpass filter for a channeliser.
 
     The -6 dB point goes at the **channel edge**, half the channel spacing, because that is
-    what the wanted signal occupies: a 12.5 kHz PMR446 emission is about 11 kHz wide, so the
-    filter has to pass roughly +/-5.5 kHz and nothing beyond it. Oversampling moves the
+    what the wanted signal occupies: a PMR446 emission is `bands.OCCUPIED_BANDWIDTH_HZ` wide,
+    so the filter has to pass half of that either side and nothing beyond it. Oversampling moves the
     *alias* limit out to half the per-channel output rate, which is what gives the response
     room to reach its stopband before energy starts folding back in.
 
@@ -133,7 +135,15 @@ def design_prototype(config: ChannelizerConfig) -> np.ndarray:
     channel loop on every block.
     """
     nyquist = config.sample_rate / 2.0
-    cutoff = (config.channel_spacing / 2.0) / nyquist
+    # Half the channel spacing, which must be at least half the occupied bandwidth of the
+    # emission being passed or the filter would clip the signal it exists to select.
+    passband_edge = config.channel_spacing / 2.0
+    if passband_edge < OCCUPIED_BANDWIDTH_HZ / 2.0:
+        raise ValueError(
+            f"channel spacing {config.channel_spacing:.0f} Hz is narrower than the "
+            f"{OCCUPIED_BANDWIDTH_HZ:.0f} Hz a PMR446 emission occupies"
+        )
+    cutoff = passband_edge / nyquist
 
     beta = dsp.kaiser_beta(config.stopband_atten_db)
     taps = dsp.firwin(

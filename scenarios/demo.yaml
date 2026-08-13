@@ -15,7 +15,11 @@
 name: demo
 duration_s: 30.0
 sample_rate: 2000000.0
-centre_frequency: 446093750.0
+# Offset-tuned, for the same reason the receiver is: a centre frequency that is a
+# nominal channel puts the receiver's DC spur on it, and the node's DC guard then
+# blanks that channel. With this file tuned to channel 8, the 'charlie' emitter on
+# channel 8 was silently discarded and the demonstration reported Pd 0.83.
+centre_frequency: 446593750.0
 noise_floor_dbm: -120.0
 seed: 20260318
 

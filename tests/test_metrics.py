@@ -56,6 +56,7 @@ def report(
         calibrated=False,
         ctcss_tone_hz=ctcss,
         classification="FRIEND",
+        offset_s=0.0,
         peak_deviation_hz=750.0,
         gains={},
     )

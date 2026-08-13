@@ -60,6 +60,16 @@ class Settings(BaseSettings):
         CALIBRATION_PATH: Path to the YAML power calibration file.
         RECORD_AUDIO: Whether demodulated audio may be written to disk. Off by default;
             see `docs/06_legal_ethics.md` before switching it on.
+        COT_DESTINATION: Where to publish Cursor-on-Target, as ``udp://host:port``,
+            ``tcp://host:port`` or ``tls://host:port``. ``None`` publishes nowhere, which
+            is the default: an unconfigured node must not put traffic on a network.
+        COT_LATITUDE: Receiver latitude in degrees north. The only position this system
+            knows, and the one every track is placed at -- see `esm446.io.cot`.
+        COT_LONGITUDE: Receiver longitude in degrees east.
+        COT_ALTITUDE_M: Receiver height above the WGS-84 ellipsoid, in metres.
+        COT_CALLSIGN: Name the receiver appears under in a TAK client.
+        COT_STALE_S: Seconds after an emission ends that its track stays current. A policy,
+            not a measurement; specified in `docs/03_icd_cot.md`.
     """
 
     model_config = SettingsConfigDict(
@@ -91,6 +101,13 @@ class Settings(BaseSettings):
 
     CALIBRATION_PATH: str = "config/calibration.yaml"
     RECORD_AUDIO: bool = False
+
+    COT_DESTINATION: str | None = None
+    COT_LATITUDE: float = 0.0
+    COT_LONGITUDE: float = 0.0
+    COT_ALTITUDE_M: float = 0.0
+    COT_CALLSIGN: str = "ESM-446"
+    COT_STALE_S: float = 300.0
 
     @field_validator("CFAR_METHOD")
     @classmethod

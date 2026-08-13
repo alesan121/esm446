@@ -256,3 +256,78 @@ def test_two_emitters_are_separated(channelizer: PolyphaseChannelizer) -> None:
     assert magnitudes[153] == pytest.approx(0.25, rel=0.02)
     quiet = np.delete(magnitudes, [8, 153])
     assert quiet.max() < 1e-3
+
+
+# --------------------------------------------------------------------------------------
+# Sensitivity against offset from a bin centre
+# --------------------------------------------------------------------------------------
+
+
+def bin_response_db(offset_bins: float) -> tuple[float, float]:
+    """Peak-bin and summed-pair response to a tone offset from a bin centre.
+
+    Args:
+        offset_bins: Offset from the bin centre, in bins.
+
+    Returns:
+        ``(peak_bin_db, pair_sum_db)`` relative to a tone exactly on centre.
+    """
+    config = ChannelizerConfig(sample_rate=2_000_000.0, num_channels=160, decimation=80)
+    samples = 1 << 17
+    t = np.arange(samples) / config.sample_rate
+
+    def bins(offset: float) -> np.ndarray:
+        frequency = (20 + offset) * config.channel_spacing
+        tone = np.exp(2j * np.pi * frequency * t).astype(np.complex64)
+        spectra = PolyphaseChannelizer(config).process(tone)
+        return (np.abs(spectra[spectra.shape[0] // 4 :]) ** 2).mean(axis=0)
+
+    reference = bins(0.0).max()
+    power = bins(offset_bins)
+    ordered = np.sort(power)[::-1]
+    return (
+        float(10 * np.log10(ordered[0] / reference)),
+        float(10 * np.log10((ordered[0] + ordered[1]) / reference)),
+    )
+
+
+def test_the_response_is_flat_across_most_of_a_bin() -> None:
+    """A sharp prototype filter buys a flat top, and that is worth stating as a figure.
+
+    This is not the gentle sag of a windowed FFT's scalloping loss. Out to 0.3 bins the
+    response does not move at the hundredth of a decibel.
+    """
+    for offset in (0.0, 0.1, 0.2, 0.3):
+        peak, _ = bin_response_db(offset)
+        assert abs(peak) < 0.05, f"{offset} bins off centre cost {peak:.3f} dB"
+
+
+def test_the_worst_case_is_six_decibels_at_the_bin_edge() -> None:
+    """Halfway between two bins is the worst place an emitter can sit, and it costs 6 dB.
+
+    That is the -6 dB point the prototype puts at the channel edge: this loss and the
+    adjacent-channel rejection are the same number seen from either side, so it cannot be
+    reduced without giving rejection back.
+    """
+    peak, _ = bin_response_db(0.5)
+
+    assert peak == pytest.approx(-6.02, abs=0.15)
+
+
+def test_the_loss_appears_only_in_the_last_fifth_of_the_bin() -> None:
+    """Where the ripple lives decides whether it matters, so it is measured, not assumed."""
+    assert bin_response_db(0.40)[0] == pytest.approx(-0.79, abs=0.15)
+    assert bin_response_db(0.45)[0] == pytest.approx(-2.53, abs=0.20)
+
+
+def test_summing_the_pair_halves_the_loss_in_decibels() -> None:
+    """And this is the measurement that shows why it buys less than it looks like it should.
+
+    The split energy comes back -- 6.02 dB becomes 3.01 dB -- but the noise in the second bin
+    comes with it, so the ratio of one to the other is unchanged. What the sum actually buys
+    is lower variance in the test statistic; see `esm446.core.detector`.
+    """
+    peak, pair = bin_response_db(0.5)
+
+    assert peak == pytest.approx(-6.02, abs=0.15)
+    assert pair == pytest.approx(-3.01, abs=0.15)

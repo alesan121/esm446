@@ -33,6 +33,34 @@ picks up a frame-dependent phase ramp unless ``D`` is a multiple of ``M``. Witho
 correction, magnitudes look correct while phase — and therefore any subsequent demodulation
 — is wrong. `tests/test_channelizer.py` pins this down with a constant-phase assertion.
 
+Sensitivity against offset from a bin centre
+--------------------------------------------
+Nothing obliges a transmitter to sit on a bin centre, and this system exists partly to find
+the ones that do not. The response is therefore worth stating as a function of offset rather
+than as a single number. Measured against a pure tone, relative to the on-centre case:
+
+===========  ================
+offset       peak bin
+===========  ================
+0.00 bins     0.00 dB
+0.30 bins    -0.00 dB
+0.40 bins    -0.79 dB
+0.45 bins    -2.53 dB
+0.50 bins    **-6.02 dB**
+===========  ================
+
+This is not the scalloping loss of a windowed FFT, which is a gentle 1.4 to 3.9 dB sag across
+the whole bin. It is the prototype filter's transition band, and because the prototype is
+sharp the response is *flat to within a hundredth of a decibel across 60 % of the bin and
+then falls off a cliff*. The worst case, exactly halfway between two bins, is 6.02 dB, which
+is the -6 dB point the prototype was designed to put at the channel edge -- the loss and the
+adjacent-channel rejection are the same number seen from two sides.
+
+So the honest sensitivity figure carries a **6 dB ripple**, and quoting the on-centre value
+alone overstates the system by that much for the emitters it is least likely to already know
+about. `esm446.core.detector` documents an optional second test that recovers part of it and
+what measuring it cost.
+
 Oversampling
 ------------
 With ``D == M`` the bank is critically sampled: output rate equals channel spacing, and the

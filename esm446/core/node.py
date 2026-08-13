@@ -165,7 +165,6 @@ class EsmNode:
 
         power = (np.abs(spectra) ** 2).astype(np.float64)
         noise = self.detector.noise_estimate(power)
-        mask = power > noise * self.detector.threshold_factor
 
         # Bin 0 is DC, and a direct-conversion receiver leaks its own local oscillator
         # there. Measured on a HackRF One that spur runs 31 dB above the noise floor and is
@@ -173,10 +172,27 @@ class EsmNode:
         # permanent emission of unlimited duration. The bin carries no external signal by
         # construction, and offset tuning has already placed it outside the allocation, so
         # excluding it costs nothing.
+        #
+        # The guard has to reach the pair test, not just the final mask. A spur 31 dB over
+        # the floor drags any pair it belongs to over the threshold, so blanking bin 0
+        # afterwards would leave bin 1 flagged and report the receiver's own artefact as an
+        # emission on the next channel along.
+        excluded = np.zeros(self.config.num_channels, dtype=bool)
         if self.dc_guard_bins > 0:
-            mask[:, : self.dc_guard_bins] = False
+            excluded[: self.dc_guard_bins] = True
             if self.dc_guard_bins > 1:
-                mask[:, -(self.dc_guard_bins - 1) :] = False
+                excluded[-(self.dc_guard_bins - 1) :] = True
+
+        # An emitter between two bins splits its energy and may clear neither on its own.
+        # The pair test catches it; the adjacent-bin merge below turns the two flagged bins
+        # back into one emitter. See `esm446.core.detector.os_pair_threshold_factor`.
+        #
+        # Spelled out rather than delegated to `detection_mask` only so the noise estimate
+        # computed above is reused: it is the expensive part of the detector and the tracker
+        # needs it too.
+        mask = power > noise * self.detector.threshold_factor
+        mask |= self.detector.pair_mask(power, noise, exclude=excluded)
+        mask[:, excluded] = False
 
         emissions = self.tracker.update(spectra, power, mask, noise)
         self.frames_processed += spectra.shape[0]

@@ -143,7 +143,7 @@ def two_emitter_reports(two_emitter_all_reports: list) -> list:
 
 
 def test_both_emitters_are_separated(two_emitter_reports: list) -> None:
-    """Two handsets transmitting at once, on channels five apart, recorded together.
+    """Two radios transmitting at once, on channels five apart, recorded together.
 
     Everything before this was one emitter at a time or a simulation. This is the case the
     channeliser exists for.
@@ -290,3 +290,89 @@ def test_the_two_emitter_vector_is_small_enough_to_commit() -> None:
     if not TWO.exists():
         pytest.skip("two-emitter vector not present")
     assert TWO.stat().st_size < 5 * 1024 * 1024
+
+
+# --------------------------------------------------------------------------------------
+# Spectral purity, and the emitter feature that failed
+# --------------------------------------------------------------------------------------
+
+
+def sideband_profile(vector: Path, metadata: Path, carrier_hz: float) -> dict[int, float]:
+    """Level at each channel step from a carrier, in dBc, over the frames it was up.
+
+    Args:
+        vector: The recorded IQ.
+        metadata: Its sidecar description.
+        carrier_hz: Frequency of the carrier to profile.
+
+    Returns:
+        ``{step_in_channels: dBc}``, averaged over the two sidebands.
+    """
+    from esm446.core.channelizer import PolyphaseChannelizer
+
+    meta = json.loads(metadata.read_text())
+    rate, centre, num_bins = meta["sample_rate_hz"], meta["centre_hz"], meta["num_channels"]
+    channelizer = PolyphaseChannelizer(
+        ChannelizerConfig(sample_rate=rate, num_channels=num_bins, decimation=num_bins // 2)
+    )
+
+    frames = []
+    with FileSource(vector, rate, centre, "cs8") as source:
+        while (block := source.read(262_144)) is not None:
+            if block.size:
+                spectra = channelizer.process(block)
+                if spectra.shape[0]:
+                    frames.append(np.abs(spectra) ** 2)
+    power = np.concatenate(frames, axis=0)
+
+    carrier_bin = int(np.argmin(np.abs(bands.bin_frequencies(centre, rate, num_bins) - carrier_hz)))
+    # Only the frames this carrier was actually up, or the average is dominated by silence.
+    active = power[:, carrier_bin] > np.percentile(power[:, carrier_bin], 60)
+    reference = power[active, carrier_bin].mean()
+
+    return {
+        step: float(
+            10
+            * np.log10(
+                0.5
+                * (
+                    power[active, (carrier_bin - step) % num_bins].mean()
+                    + power[active, (carrier_bin + step) % num_bins].mean()
+                )
+                / reference
+            )
+        )
+        for step in (1, 2, 3, 4)
+    }
+
+
+def test_the_spur_sits_three_channel_steps_out(two_emitter_all_reports: list) -> None:
+    """Not monotonic, which is what separates a discrete spur from modulation splatter.
+
+    A skirt that falls away with offset is splatter. A bump that rises again at a fixed
+    offset is a synthesiser artefact, and 37.5 kHz is exactly three channel steps.
+    """
+    profile = sideband_profile(TWO, TWO_METADATA, 446_093_731.0)
+
+    assert profile[3] > profile[2], "the +/-37.5 kHz pair must stand above its neighbours"
+    assert profile[3] > profile[4]
+
+
+def test_the_spur_does_not_distinguish_the_two_radios(two_emitter_all_reports: list) -> None:
+    """The negative result, pinned so the documentation cannot drift back to the wrong one.
+
+    The two transmitters are different models from different manufacturers -- a Baofeng UV-5RA
+    and a Radtel RT-900. The spurious pair at +/-37.5 kHz was the obvious candidate for a
+    specific-emitter-identification feature: discrete, repeatable, and a property of the
+    transmitter rather than of the path. It sits at the same level on both, inside the
+    uncertainty of the measurement, so it identifies a family of designs and not a unit.
+
+    `esm446.analysis.eob` therefore groups on frequency and sub-audible tone, and this test
+    is why.
+    """
+    first = sideband_profile(TWO, TWO_METADATA, 446_031_272.0)
+    second = sideband_profile(TWO, TWO_METADATA, 446_093_731.0)
+
+    assert -36.0 < first[3] < -32.0, f"measured {first[3]:.1f} dBc"
+    assert -36.0 < second[3] < -32.0, f"measured {second[3]:.1f} dBc"
+    assert abs(first[3] - second[3]) < 2.0, "a feature that separates them would differ by more"

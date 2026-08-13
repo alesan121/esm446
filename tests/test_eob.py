@@ -77,7 +77,7 @@ def test_different_channels_are_different_emitters() -> None:
 
 
 def test_the_same_channel_with_different_tones_is_two_emitters() -> None:
-    """The case the hardware session produced: two handsets, one channel apart, two codes."""
+    """The case the hardware session produced: two radios, two different codes."""
     reports = [
         emission(at=0.0, tone=114.8),
         emission(at=10.0, tone=141.3),

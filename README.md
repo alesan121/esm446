@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 395 tests
+poetry run pytest                    # 397 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -82,7 +82,8 @@ real, and each is identified by the arithmetic it obeys — a pair symmetric abo
 or a product of two at 2·f₁−f₂, both holding to a few hundred hertz on the recordings. They
 are attached to the emitter that produced them rather than counted as emitters, which is the
 difference between reporting eleven and reporting three. Deleting them instead would discard
-a measurement of the transmitter's spectral purity, and that is a discriminant worth keeping.
+the only measurement this system makes of the transmitter's spectral purity — which turned
+out to be a negative result worth keeping: see [`docs/04_link_budget.md`](docs/04_link_budget.md).
 
 **What nothing explains stays an emission.** The third line is a 0.36 s detection at 2.9 dB
 SNR with no symmetric partner and no relation to either carrier. It is probably splatter too.

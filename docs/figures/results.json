@@ -1,0 +1,23 @@
+{
+  "adjacent_channel_rejection_db": 94.1,
+  "worst_case_scalloping_db": -6.02,
+  "worst_case_pair_db": -3.01,
+  "pfa_design": 0.001,
+  "pfa_measured_span": [
+    0.0009,
+    0.001121
+  ],
+  "pd50_centred_db": 15.0,
+  "pd50_offset_db": 20.0,
+  "coverage": {
+    "5": 5.3,
+    "50": 50.3,
+    "68": 69.0,
+    "90": 89.7,
+    "95": 95.3
+  },
+  "coverage_trials": 300,
+  "pfb_cpu_s_per_s": 0.212,
+  "node_cpu_s_per_s": 0.2624,
+  "v0_cpu_s_per_s": 6.9
+}

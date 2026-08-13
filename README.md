@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 300 tests
+poetry run pytest                    # 322 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -47,36 +47,46 @@ poetry run esm446-eob emissions.db
 ```
 
 ```
-12 emissions over 27.2 minutes
-27.8 s of carrier, band load 1.7%
+12 detections over 27.2 minutes, 8 of them by-products of a stronger emission
+12.0 s of carrier, band load 0.7%
 
 Emitters, busiest first:
   label                  n  airtime   duty  median  dev Hz    ±Hz
   PMR8/114.8Hz           2     7.9s   0.5%    3.9s    1338     26  (>= 1)
-  PMR11/no-tone          1     4.2s      -    4.2s   10167      0  (>= 1)
   PMR3/141.3Hz           1     3.7s      -    3.7s    1100      0  (>= 1)
-  ...
+  446.06670/no-tone      1     0.4s      -    0.4s    9848      0  (>= 1)
+
+By-products, attributed rather than counted as emitters:
+   446.13199 MHz    +38.2 kHz   -22.2 dBc  SPLATTER of PMR8/114.8Hz
+   446.05573 MHz    -38.0 kHz   -22.8 dBc  SPLATTER of PMR8/114.8Hz
+   446.15609 MHz    +62.3 kHz   -25.1 dBc  INTERMOD3 of PMR8/114.8Hz
+   445.96892 MHz    -62.4 kHz   -22.0 dBc  INTERMOD3 of PMR3/141.3Hz
+   ...
 
 Emitter counts marked (>= 1) are lower bounds: none of that group's emissions
 overlap in time, and a recording cannot separate one radio taking turns from
 several sharing a channel and a tone.
 ```
 
-Two things in that output are worth reading carefully, because both are the system declining
-to overstate what it knows.
+That comes from two handsets and twelve detections. Three things in it are the system
+declining to overstate what it knows.
 
 **Every count is a lower bound.** Two emitters that never transmit at the same time cannot be
 distinguished from one emitter that paused; no feature engineering escapes that, because the
 evidence does not exist in the recording. A profile drops the marker only when two of its own
 emissions overlap in time, which is the one observation that forces a second transmitter.
 
-**It also over-counts, in the other direction.** That listing comes from two handsets. The
-extra emitters are the transmitters' own splatter landing on neighbouring channels, still
-unattributed — [#26](https://github.com/alesan121/esm446/issues/26). Their deviation gives
-them away: 5–12 kHz against the 1.1–1.3 kHz of the real carriers, because a discriminator
-reading taken on a sideband is not a modulation index. Filtering on that here would hide the
-symptom and discard a measurement of the transmitter's spectral purity; the fix belongs in
-the detector.
+**By-products are attributed, not deleted.** A transmitter puts energy on other channels: its
+own splatter, and its intermodulation with any other carrier on air. Those detections are
+real, and each is identified by the arithmetic it obeys — a pair symmetric about one carrier,
+or a product of two at 2·f₁−f₂, both holding to a few hundred hertz on the recordings. They
+are attached to the emitter that produced them rather than counted as emitters, which is the
+difference between reporting eleven and reporting three. Deleting them instead would discard
+a measurement of the transmitter's spectral purity, and that is a discriminant worth keeping.
+
+**What nothing explains stays an emission.** The third line is a 0.36 s detection at 2.9 dB
+SNR with no symmetric partner and no relation to either carrier. It is probably splatter too.
+It is not called splatter, because the arithmetic does not say so.
 
 ## Why it was rebuilt
 

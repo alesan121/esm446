@@ -33,21 +33,19 @@ Features used, and why those
 
 What is deliberately not used is the spurious signature at +/-37.5 kHz measured in
 `docs/04_link_budget.md`, which distinguishes the two handsets by about 2 dB. It is the
-strongest identity feature found so far and it needs the detector to attribute sidebands to
-their emitter first, which is issue #26.
+strongest identity feature found so far and using it needs a model of how a unit's splatter
+varies with power and modulation, which two recordings cannot supply.
 
-Known overcount on real captures
---------------------------------
-Run over the two committed hardware vectors, this reports **eleven** emitters where two
-radios transmitted. Every extra one is that same unattributed splatter: the sidebands land on
-neighbouring channels and off the grid, arrive with no recoverable sub-audible tone, and are
-therefore grouped as emitters in their own right. Their deviation figures give them away --
-5 to 12 kHz against the 1.1 to 1.3 kHz of the real transmissions, because a sideband is not
-an FM carrier and the discriminator reading is meaningless for it.
+By-products are attached, not counted
+-------------------------------------
+A strong emitter puts detectable energy on other channels: its own splatter, and its
+intermodulation with any other carrier on air. Those detections are real and are kept, but
+they are not emitters. `esm446.analysis.artefacts` identifies them by the arithmetic relation
+they hold to the emission that produced them, and they arrive here already marked; each is
+attached to its parent's profile as a `product` rather than becoming a profile of its own.
 
-The count is a lower bound in the direction stated above and, until #26 attributes sidebands
-to the emitter that produced them, an over-count in the other. Filtering here on deviation
-would hide the symptom and lose the measurement; the fix belongs in the detector.
+That is the difference between reporting eleven emitters and reporting two for the same pair
+of handsets, which is what this did before #26.
 """
 
 from __future__ import annotations
@@ -60,6 +58,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from esm446.analysis.artefacts import attribute_products
 from esm446.core.node import EmissionReport
 
 logger = logging.getLogger(__name__)
@@ -112,6 +111,10 @@ class EmitterProfile:
         emissions: The emissions attributed to this emitter.
         proven_multiple: Whether two of those emissions overlap in time, which is the only
             observation that forces more than one transmitter behind them.
+        products: Detections explained as by-products of this emitter -- its splatter and
+            its intermodulation with other carriers. Kept because they measure the
+            transmitter's spectral purity, and counted separately because they are not
+            emitters. See `esm446.analysis.artefacts`.
     """
 
     label: str
@@ -120,6 +123,7 @@ class EmitterProfile:
     ctcss_tone_hz: float | None
     emissions: list[EmissionReport] = field(default_factory=list)
     proven_multiple: bool = False
+    products: list[EmissionReport] = field(default_factory=list)
 
     @property
     def transmission_count(self) -> int:
@@ -217,6 +221,15 @@ class EmitterProfile:
             "frequency_spread_hz": round(self.frequency_spread_hz, 1),
             "proven_multiple": self.proven_multiple,
             "count_is_lower_bound": self.count_is_lower_bound,
+            "products": [
+                {
+                    "frequency_hz": round(p.frequency_hz, 1),
+                    "offset_hz": round(p.frequency_hz - self.frequency_hz, 1),
+                    "dbc": round(p.peak_power_dbfs - self.median_power_dbfs, 1),
+                    "attribution": p.attribution,
+                }
+                for p in self.products
+            ],
         }
 
 
@@ -249,7 +262,13 @@ def cluster_emitters(
     """
     profiles: list[EmitterProfile] = []
 
-    for report in sorted(reports, key=lambda r: r.timestamp):
+    # Detections already explained as another emitter's splatter or intermodulation are not
+    # emitters and must not become profiles. They are attached to their parent below, which
+    # keeps them visible without letting them inflate the count.
+    products = [r for r in reports if r.attribution is not None]
+    emissions = [r for r in reports if r.attribution is None]
+
+    for report in sorted(emissions, key=lambda r: r.timestamp):
         for profile in profiles:
             same_frequency = abs(report.frequency_hz - profile.frequency_hz) <= (
                 frequency_tolerance_hz
@@ -272,14 +291,43 @@ def cluster_emitters(
                 )
             )
 
+    for product in products:
+        parent = _nearest_profile(product, profiles, frequency_tolerance_hz)
+        if parent is not None:
+            parent.products.append(product)
+        else:
+            logger.warning(
+                "eob: a detection at %.4f MHz was attributed to an emission at %.4f MHz that "
+                "is not among these reports",
+                product.frequency_hz / 1e6,
+                (product.attributed_to_hz or 0.0) / 1e6,
+            )
+
     profiles.sort(key=lambda p: p.total_airtime_s, reverse=True)
     logger.info(
-        "eob: %d emissions grouped into %d emitters, %d of which are proven multiple",
+        "eob: %d detections, %d attributed as by-products, %d emitters, %d proven multiple",
         len(reports),
+        len(products),
         len(profiles),
         sum(1 for p in profiles if p.proven_multiple),
     )
     return profiles
+
+
+def _nearest_profile(
+    product: EmissionReport,
+    profiles: list[EmitterProfile],
+    tolerance_hz: float,
+) -> EmitterProfile | None:
+    """Find the profile a by-product was attributed to, by the parent frequency it carries."""
+    if product.attributed_to_hz is None:
+        return None
+    candidates = [
+        p for p in profiles if abs(p.frequency_hz - product.attributed_to_hz) <= tolerance_hz
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda p: abs(p.frequency_hz - (product.attributed_to_hz or 0.0)))
 
 
 def _tones_match(first: float | None, second: float | None) -> bool:
@@ -364,14 +412,21 @@ def compute_occupancy(reports: list[EmissionReport]) -> Occupancy:
     if not reports:
         return occupancy
 
-    for report in reports:
+    # A carrier's own splatter is not occupancy of the channel it lands on. Counting it would
+    # report neighbouring channels as busy whenever a strong emitter is on air, which is the
+    # opposite of what an occupancy figure is for.
+    emissions = [r for r in reports if r.attribution is None]
+    if not emissions:
+        return occupancy
+
+    for report in emissions:
         hour = datetime.fromtimestamp(report.timestamp, tz=timezone.utc).hour
         key = (report.pmr_channel, hour)
         occupancy.airtime_s[key] = occupancy.airtime_s.get(key, 0.0) + report.duration_s
         occupancy.counts[key] = occupancy.counts.get(key, 0) + 1
 
-    start = min(r.timestamp for r in reports)
-    end = max(r.timestamp + r.duration_s for r in reports)
+    start = min(r.timestamp for r in emissions)
+    end = max(r.timestamp + r.duration_s for r in emissions)
     occupancy.window_s = end - start
     return occupancy
 
@@ -388,11 +443,17 @@ def describe(reports: list[EmissionReport]) -> str:
     if not reports:
         return "no emissions"
 
+    reports = attribute_products(reports)
     occupancy = compute_occupancy(reports)
     profiles = cluster_emitters(reports)
+    products = sum(len(p.products) for p in profiles)
+
+    header = f"{len(reports)} detections over {occupancy.window_s / 60:.1f} minutes"
+    if products:
+        header += f", {products} of them by-products of a stronger emission"
 
     lines = [
-        f"{len(reports)} emissions over {occupancy.window_s / 60:.1f} minutes",
+        header,
         f"{occupancy.total_airtime_s:.1f} s of carrier, band load {occupancy.band_duty_cycle:.1%}",
         "",
         "Emitters, busiest first:",
@@ -423,6 +484,18 @@ def describe(reports: list[EmissionReport]) -> str:
         for hour, seconds in hours:
             lines.append(f"  {hour:02d}:00      {seconds:>7.1f} s")
 
+    if products:
+        lines.append("")
+        lines.append("By-products, attributed rather than counted as emitters:")
+        for profile in profiles:
+            for product in profile.products:
+                offset_khz = (product.frequency_hz - profile.frequency_hz) / 1e3
+                lines.append(
+                    f"  {product.frequency_hz / 1e6:>10.5f} MHz  {offset_khz:>+7.1f} kHz  "
+                    f"{product.peak_power_dbfs - profile.median_power_dbfs:>+6.1f} dBc  "
+                    f"{product.attribution} of {profile.label}"
+                )
+
     lines.append("")
     lines.append(
         "Emitter counts marked (>= 1) are lower bounds: none of that group's emissions\n"
@@ -434,10 +507,13 @@ def describe(reports: list[EmissionReport]) -> str:
 
 def summarise(reports: list[EmissionReport]) -> dict[str, Any]:
     """Return the order of battle as a dictionary, for JSON output and for tests."""
+    reports = attribute_products(reports)
     occupancy = compute_occupancy(reports)
     profiles = cluster_emitters(reports)
     return {
-        "emissions": len(reports),
+        "detections": len(reports),
+        "emissions": sum(p.transmission_count for p in profiles),
+        "products": sum(len(p.products) for p in profiles),
         "window_s": round(occupancy.window_s, 2),
         "total_airtime_s": round(occupancy.total_airtime_s, 2),
         "band_duty_cycle": round(occupancy.band_duty_cycle, 4),

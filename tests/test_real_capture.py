@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from esm446.analysis.artefacts import INTERMOD3, SPLATTER, attribute_products
 from esm446.analysis.eob import cluster_emitters
 from esm446.core import bands
 from esm446.core.channelizer import ChannelizerConfig
@@ -202,35 +203,87 @@ def test_the_order_of_battle_finds_the_two_carriers(two_emitter_reports: list) -
     assert by_channel[3].ctcss_tone_hz == pytest.approx(141.3)
 
 
-def test_the_order_of_battle_overcounts_until_splatter_is_attributed(
+def test_without_attribution_two_handsets_become_more_than_two_emitters(
     two_emitter_all_reports: list,
 ) -> None:
-    """The documented weakness, pinned so it cannot be forgotten or quietly overstated.
+    """The defect #26 describes, kept as a test so the fix below is measured against it.
 
-    Grouped over everything the node reports, two handsets become more than two emitters. The
-    extra ones are the transmitters' own sidebands landing on neighbouring channels, and they
-    stay extra until #26 attributes them to the emitter that produced them.
+    Grouped over every detection the node produces, the transmitters' own by-products land on
+    neighbouring channels with no recoverable tone and are counted as emitters in their own
+    right.
     """
     profiles = cluster_emitters(two_emitter_all_reports)
 
     assert len(profiles) > 2
 
 
-def test_a_sideband_is_recognisable_by_its_deviation(two_emitter_all_reports: list) -> None:
-    """Why the fix belongs in the detector and not in a deviation filter here.
+def test_attribution_reduces_them_to_the_two_that_transmitted(
+    two_emitter_all_reports: list,
+) -> None:
+    """The same detections, after each by-product is attributed to the carrier that made it.
 
-    A discriminator reading taken on a sideband is not a modulation index; it is what the
-    discriminator does when handed something that is not an FM carrier, and the figures come
-    out several times those of the real transmissions. That separation is what makes the
-    overcount diagnosable -- and using it to discard the reports would hide a measurement of
-    the transmitter's spectral purity, which is the thing worth keeping.
+    One weak detection is left over: 0.36 s at 2.9 dB SNR, 35.4 kHz from channel 3, with no
+    symmetric partner and no arithmetic relation to either carrier. Nothing explains it, so
+    nothing claims to, and it is counted as what it is.
     """
-    carriers = [r for r in two_emitter_all_reports if r.snr_db > 15.0]
-    sidebands = [r for r in two_emitter_all_reports if r.snr_db <= 15.0]
-    assert sidebands, "the vector is expected to contain the transmitters' splatter"
+    profiles = cluster_emitters(attribute_products(list(two_emitter_all_reports)))
+
+    carriers = [p for p in profiles if p.transmission_count and p.median_deviation_hz < 2_000.0]
+    assert len(carriers) == 2
+    assert {p.pmr_channel for p in carriers} == {3, 8}
+    assert sum(len(p.products) for p in profiles) == len(two_emitter_all_reports) - len(profiles)
+
+
+def test_the_products_are_third_order_intermodulation_of_the_two_carriers(
+    two_emitter_all_reports: list,
+) -> None:
+    """Two carriers 62.5 kHz apart put products at 2*f1 - f2 and 2*f2 - f1, and they are there.
+
+    This is the relation that separates the two-emitter case from the single-handset splatter
+    measured in `docs/04_link_budget.md`: the products are not symmetric about either carrier,
+    they are symmetric about the pair.
+    """
+    attributed = attribute_products(list(two_emitter_all_reports))
+    products = [r for r in attributed if r.attribution == INTERMOD3]
+    assert products, "the vector is expected to contain the two carriers' products"
+
+    carriers = sorted(
+        (r for r in attributed if r.attribution is None and r.snr_db > 15.0),
+        key=lambda r: r.frequency_hz,
+    )
+    first, second = carriers[0].frequency_hz, carriers[1].frequency_hz
+    predicted = (2 * first - second, 2 * second - first)
+
+    for product in products:
+        assert min(abs(product.frequency_hz - p) for p in predicted) < 2_000.0
+
+
+def test_a_by_product_is_recognisable_by_its_deviation(two_emitter_all_reports: list) -> None:
+    """Corroboration from a different measurement than the one used to attribute.
+
+    A discriminator reading taken on a by-product is not a modulation index; it is what the
+    discriminator does when handed something that is not an FM carrier, and the figures come
+    out several times those of the real transmissions. Attribution does not use this -- it
+    uses frequency and simultaneity -- so the agreement between the two is evidence rather
+    than tautology.
+    """
+    attributed = attribute_products(list(two_emitter_all_reports))
+    carriers = [r for r in attributed if r.snr_db > 15.0]
+    products = [r for r in attributed if r.attribution is not None]
+    assert products, "the vector is expected to contain the transmitters' by-products"
 
     assert max(r.peak_deviation_hz for r in carriers) < 2_000.0
-    assert min(r.peak_deviation_hz for r in sidebands) > 3_000.0
+    assert min(r.peak_deviation_hz for r in products) > 3_000.0
+
+
+def test_the_single_handset_splatter_is_attributed_as_splatter(reports: list) -> None:
+    """One transmitter, no second carrier to mix with, so the pairs are its own splatter."""
+    attributed = attribute_products(list(reports))
+    products = [r for r in attributed if r.attribution is not None]
+
+    assert products
+    assert all(r.attribution == SPLATTER for r in products)
+    assert len(cluster_emitters(attributed)) == 1
 
 
 def test_the_two_emitter_vector_is_small_enough_to_commit() -> None:

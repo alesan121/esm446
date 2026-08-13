@@ -7,6 +7,7 @@ about appending, surviving reopening, and not taking the node down when a sink b
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -268,6 +269,57 @@ def test_an_empty_store_reads_as_no_emissions(tmp_path: Path) -> None:
         pass
 
     assert read_reports(tmp_path / "e.db") == []
+
+
+# --------------------------------------------------------------------------------------
+# Schema migration
+# --------------------------------------------------------------------------------------
+
+
+def test_an_archive_from_an_earlier_version_is_brought_up_to_date(tmp_path: Path) -> None:
+    """CREATE TABLE IF NOT EXISTS sees a table and stops, so the columns must be added.
+
+    An archive is the one thing here that cannot be regenerated. Refusing to open an older
+    one, or opening it and failing on the first insert, would lose the capture it holds.
+    """
+    path = tmp_path / "old.db"
+    connection = sqlite3.connect(path)
+    connection.executescript("""
+        CREATE TABLE emissions (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp         REAL    NOT NULL,
+            frequency_hz      REAL    NOT NULL,
+            pmr_channel       INTEGER,
+            bin_index         INTEGER NOT NULL,
+            duration_s        REAL    NOT NULL,
+            peak_power_dbfs   REAL    NOT NULL,
+            snr_db            REAL    NOT NULL,
+            estimated_dbm     REAL,
+            calibrated        INTEGER NOT NULL,
+            ctcss_tone_hz     REAL,
+            classification    TEXT    NOT NULL,
+            offset_s          REAL    NOT NULL,
+            peak_deviation_hz REAL    NOT NULL,
+            lna_db            REAL,
+            vga_db            REAL,
+            amp_enabled       INTEGER
+        );
+        INSERT INTO emissions (
+            timestamp, frequency_hz, pmr_channel, bin_index, duration_s, peak_power_dbfs,
+            snr_db, calibrated, classification, offset_s, peak_deviation_hz
+        ) VALUES (500.0, 446093750.0, 8, 9, 1.0, -30.0, 20.0, 0, 'UNKNOWN', 0.0, 1200.0);
+        """)
+    connection.commit()
+    connection.close()
+
+    with SqliteSink(path) as sink:
+        assert sink.write([report()]) == 1
+        assert sink.count() == 2
+
+    recovered = read_reports(path)
+    assert len(recovered) == 2
+    assert recovered[0].timestamp == 500.0
+    assert recovered[0].attribution is None, "never examined is not the same as examined"
 
 
 def test_the_insert_statement_matches_the_column_tuple() -> None:

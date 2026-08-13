@@ -100,22 +100,43 @@ be repeated with the receiver's internal gains at zero.
 ## Measured: transmitter spectral purity
 
 Both handsets show a **discrete spurious pair at ±37.5 kHz** from the carrier. The profile is
-not monotonic, which is what distinguishes a spur from modulation splatter:
+not monotonic, which is what distinguishes a spur from modulation splatter.
 
-| offset | radio 1 | radio 2 |
-|---|---|---|
-| ±12.5 kHz | — | −44.8 / −48.4 dBc |
-| ±25.0 kHz | −45.4 dBc | −45.8 / −46.4 dBc |
-| **±37.5 kHz** | **−32.8 to −34.6 dBc** | **−34.9 / −35.2 dBc** |
-| ±50.0 kHz | −45.1 dBc | −45.7 / −46.0 dBc |
+The two radios are **different models from different manufacturers**: a Baofeng UV-5RA and a
+Radtel RT-900. Measured per radio, averaged over the frames each carrier was up, relative to
+its own carrier:
+
+| offset | UV-5RA (alone) | UV-5RA (both on air) | RT-900 (both on air) |
+|---|---|---|---|
+| ±12.5 kHz | −44.3 / −44.2 | −38.1 / −38.2 | −39.4 / −39.2 |
+| ±25.0 kHz | −42.6 / −43.3 | −34.3 / −37.8 | −38.7 / −35.4 |
+| **±37.5 kHz** | **−34.7 / −34.7** | **−33.5 / −33.4** | **−33.7 / −33.7** |
+| ±50.0 kHz | −41.5 / −41.5 | −37.8 / −37.8 | −38.6 / −38.7 |
+
+The single-radio column is the clean one. With both on air the carriers are five channel steps
+apart, so each radio's ±25 and ±50 kHz bins carry the other's energy and their intermodulation
+products; only the ±37.5 kHz figures are uncontaminated in that capture.
 
 The ratio is independent of transmit power — −34.6 dBc at high, −31.9 dBc at low — so it is a
 fixed-ratio synthesiser artefact rather than a power-dependent nonlinearity in the amplifier.
 37.5 kHz is three channel steps, which points at the fractional-N synthesiser.
 
-Both units of the same model show it within about 2 dB. That is the shape of a **specific
-emitter identification** feature: it distinguishes two radios that share a channel plan and,
-in the test that produced these numbers, would have shared a CTCSS code.
+### It is not a specific-emitter-identification feature
+
+An earlier version of this document drew the opposite conclusion, on the belief that the two
+radios were two units of one model. They are not, and that changes what the measurement means.
+
+Across two different models from two manufacturers the spur sits at **−33.4 to −34.7 dBc**, a
+spread of about 1.2 dB — which is within the uncertainty of these measurements. A feature that
+takes the same value on two independently designed radios is a **family trait, not a unit
+signature**: it points at a shared design element, most plausibly the same class of integrated
+transceiver used across inexpensive handhelds, rather than at an individual transmitter.
+
+So the strongest spectral feature found here **fails as SEI on the only pair available to test
+it with**. That is a negative result and it is the useful one: it is why
+`esm446.analysis.eob` groups emitters by frequency and sub-audible tone and does not use the
+spurious signature. Establishing that some emitter feature *does* discriminate would need
+several units of the same model, which this project does not have.
 
 The node reports these as detections on the neighbouring channels, because they are energy on
 those channels and the detector is right about them. `esm446.analysis.artefacts` then

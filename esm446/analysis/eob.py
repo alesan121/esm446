@@ -26,15 +26,19 @@ Features used, and why those
 - **CTCSS tone.** Decisive when two emitters differ, useless when they agree — and they did
   agree in the hardware session that motivated this, which is precisely why it cannot be the
   only feature.
-- **Peak deviation.** How hard the transmitter drives its modulator. Varies between units of
-  the same model.
+- **Peak deviation.** How hard the transmitter drives its modulator. Differs between the two
+  radios measured here, but also with how loudly somebody speaks, so it is recorded rather
+  than used to split.
 - **Received power.** Weak evidence on its own, since it tracks distance rather than
   identity, but a tight power distribution across a session suggests a stationary emitter.
 
 What is deliberately not used is the spurious signature at +/-37.5 kHz measured in
-`docs/04_link_budget.md`, which distinguishes the two handsets by about 2 dB. It is the
-strongest identity feature found so far and using it needs a model of how a unit's splatter
-varies with power and modulation, which two recordings cannot supply.
+`docs/04_link_budget.md`. It was the obvious candidate -- a discrete, repeatable, strong
+feature of the transmitter itself -- and measuring it settled the question the wrong way for
+it: across two different models from two manufacturers it sits between -33.4 and -34.7 dBc, a
+spread inside the measurement's own uncertainty. A feature that takes the same value on two
+independently designed radios identifies a family, not a unit, so grouping on it would merge
+emitters rather than separate them.
 
 By-products are attached, not counted
 -------------------------------------

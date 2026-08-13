@@ -36,8 +36,10 @@ What this does not do
 ---------------------
 It marks; it never deletes. Two real emitters can sit symmetrically about a third, and a node
 that silently suppressed them would be hiding emissions rather than explaining them. The
-splatter is also a measurement of the transmitter's spectral purity, which is a discriminant
-worth keeping -- two units of the same model differ by about 2 dB in it.
+splatter is also the only measurement of the transmitter's spectral purity this system makes,
+and discarding a measurement to tidy a count is a bad trade -- the more so because what that
+measurement showed was a negative result worth keeping: the spur sits at the same level on two
+different models, so it identifies a family of designs rather than a unit.
 
 So an attributed report keeps every figure it had and gains two fields saying what it is
 believed to be a by-product of. Whoever reads it can disagree, and the arithmetic that

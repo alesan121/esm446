@@ -52,10 +52,11 @@ Validation requires signals with known ground truth. Three sources are used, in 
 
 ### Note on the test transmitters
 
-The handheld transceivers used for radiated acceptance testing (§3.3) are amateur-service radios,
-not type-approved PMR446 equipment: ETSI EN 300 296 requires an integral antenna and 500 mW ERP,
-while these units have a detachable antenna and higher output. Transmitting with them in the PMR446
-band is therefore not compliant with the licence-exempt regime, regardless of the band being open.
+The handheld transceivers used for radiated acceptance testing (§3.3) are a **Baofeng UV-5RA**
+and a **Radtel RT-900**. Both are amateur-service radios, not type-approved PMR446 equipment:
+ETSI EN 300 296 requires an integral antenna and 500 mW ERP, while both units have a detachable
+antenna and higher output. Transmitting with them in the PMR446 band is therefore not compliant
+with the licence-exempt regime, regardless of the band being open.
 
 This is stated plainly rather than glossed over. The mitigations applied: calibration — the
 measurement that actually needs signal accuracy — is **conducted, not radiated**; radiated tests are

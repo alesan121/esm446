@@ -116,6 +116,40 @@ def print_report(scenario: Scenario, reports, truth, result, elapsed: float) -> 
     )
 
 
+def write_artefacts(scenario: Scenario, reports: list, out_dir: Path) -> list[Path]:
+    """Write the two things somebody looks at before reading anything.
+
+    The waterfall is the frame that shows what the system does; the dashboard is the band
+    picture the order of battle produces. Both come from this run rather than from a stored
+    copy, so neither can be stale.
+
+    Args:
+        scenario: The scene that was run.
+        reports: The emissions it produced.
+        out_dir: Where to write.
+
+    Returns:
+        The paths written.
+    """
+    # Imported here rather than at module scope: matplotlib is a development dependency and
+    # the demonstration must run without it when no figures were asked for.
+    from esm446.dashboard import dashboard, waterfall
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    iq, _ = scenario.generate()
+
+    picture = waterfall(
+        iq,
+        scenario.sample_rate,
+        scenario.centre_frequency,
+        reports,
+        out_dir / "waterfall.png",
+    )
+    page = out_dir / "dashboard.html"
+    page.write_text(dashboard(reports, f"ESM-446 — {scenario.name}"), encoding="utf-8")
+    return [picture, page]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the demonstration.
 
@@ -131,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--json", action="store_true", help="emit the score as JSON only")
     parser.add_argument("--quiet", action="store_true", help="suppress progress logging")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="also write the waterfall and the dashboard here, for the README and for looking at",
+    )
     args = parser.parse_args(argv)
 
     if not args.quiet and not args.json:
@@ -143,6 +182,12 @@ def main(argv: list[str] | None = None) -> int:
 
     scenario = Scenario.load(args.scenario)
     reports, truth, result, elapsed = run_demo(scenario)
+
+    if args.out is not None:
+        written = write_artefacts(scenario, reports, args.out)
+        if not args.json:
+            for path in written:
+                print(f"wrote {path}")
 
     if args.json:
         print(json.dumps(result.as_dict(), indent=2))

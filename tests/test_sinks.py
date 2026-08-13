@@ -20,6 +20,7 @@ from esm446.io.sinks import (
     MultiSink,
     SqliteSink,
     open_sink,
+    read_reports,
 )
 
 
@@ -216,6 +217,57 @@ def test_open_sink_chooses_by_extension(tmp_path: Path) -> None:
 def test_open_sink_rejects_an_unknown_extension(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="jsonl"):
         open_sink(tmp_path / "e.parquet")
+
+
+# --------------------------------------------------------------------------------------
+# Reading back
+# --------------------------------------------------------------------------------------
+
+
+def test_reports_survive_a_round_trip_through_jsonl(tmp_path: Path) -> None:
+    original = report()
+    with JsonlSink(tmp_path / "e.jsonl") as sink:
+        sink.write([original])
+
+    assert read_reports(tmp_path / "e.jsonl") == [original]
+
+
+def test_reports_survive_a_round_trip_through_sqlite(tmp_path: Path) -> None:
+    """Including the gains, which are stored as three columns and have to be reassembled."""
+    original = report()
+    with SqliteSink(tmp_path / "e.db") as sink:
+        sink.write([original])
+
+    recovered = read_reports(tmp_path / "e.db")
+
+    assert recovered == [original]
+    assert recovered[0].gains == {"lna_db": 0.0, "vga_db": 0.0, "amp_enabled": False}
+
+
+def test_reading_returns_emissions_in_time_order(tmp_path: Path) -> None:
+    """Analysis assumes chronology; a store written out of order must not break it."""
+    with JsonlSink(tmp_path / "e.jsonl") as sink:
+        sink.write([report(timestamp=3000.0), report(timestamp=1000.0), report(timestamp=2000.0)])
+
+    assert [r.timestamp for r in read_reports(tmp_path / "e.jsonl")] == [1000.0, 2000.0, 3000.0]
+
+
+def test_reading_a_missing_store_says_so(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        read_reports(tmp_path / "never-captured.jsonl")
+
+
+def test_reading_an_unknown_extension_is_rejected(tmp_path: Path) -> None:
+    (tmp_path / "e.parquet").write_text("")
+    with pytest.raises(ValueError, match="jsonl"):
+        read_reports(tmp_path / "e.parquet")
+
+
+def test_an_empty_store_reads_as_no_emissions(tmp_path: Path) -> None:
+    with SqliteSink(tmp_path / "e.db"):
+        pass
+
+    assert read_reports(tmp_path / "e.db") == []
 
 
 def test_the_insert_statement_matches_the_column_tuple() -> None:

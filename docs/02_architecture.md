@@ -66,7 +66,7 @@ reproduced by `esm446-bench`; none is a design target.
 **The source abstraction is the load-bearing one.** Live capture and replay differ only in
 which `IQSource` is constructed. Without that, none of the test suite could exist, there
 would be no demonstration for anyone without a HackRF, and CI could not run — so the
-abstraction is not decoration, it is what makes the other 400 tests possible.
+abstraction is not decoration, it is what makes the rest of the test suite possible.
 
 **Detection and analysis are separated by the store, not by a function call.** The node
 decides what is an emission; everything about *which emitter*, *how many*, and *how far* is
@@ -109,10 +109,14 @@ Measured, at 2 MS/s over 160 channels, in CPU-seconds per second of signal:
 
 | Stage | Cost | Share |
 |---|---|---|
-| Polyphase filter bank | 0.177 | 84 % |
-| CFAR detection, tracking, identification | 0.033 | 16 % |
-| **Full node pipeline** | **0.210** | **4.8× real time** |
+| Polyphase filter bank | 0.17 | 75 % |
+| CFAR detection, tracking, identification | 0.06 | 25 % |
+| **Full node pipeline** | **0.23** | **4.4× real time** |
 | Wideband survey (separate path) | 0.009 | — |
+
+Each is the median of five runs. One run of this pipeline varies by up to 45 % with machine
+load, so a single figure quoted to three decimals would be arithmetic dressed as
+measurement.
 
 Two decisions dominate this budget and both were made against measurement:
 

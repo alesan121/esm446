@@ -20,6 +20,11 @@ demo:
 # Everything a reader might want to look at, regenerated from the system rather than
 # committed and left to rot: the band picture, the order-of-battle dashboard, and every
 # figure in the V&V report.
+#
+# Note that this rewrites the committed figures under docs/figures, so `git status` will show
+# them modified afterwards. That is the point -- it is how the report is refreshed -- but the
+# throughput figures move a little between runs, so commit them only when refreshing on
+# purpose.
 report:
 	poetry run esm446-demo --quiet --out out
 	poetry run esm446-vv --output docs/figures

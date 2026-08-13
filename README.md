@@ -15,13 +15,13 @@ attached.
 
 | | measured |
 |---|---|
-| Throughput | **0.26** CPU-s per signal second — 3.8× real time, against v0's **6.9** |
-| Adjacent-channel rejection | **94.1 dB** |
+| Throughput | **0.23** CPU-s per signal second — 4.4× real time, against v0's **6.9** |
+| Adjacent-channel rejection | **92.9 dB** measured on a modulated emitter |
 | Sensitivity ripple across a bin | **6.02 dB** worst case, stated rather than hidden |
 | False alarm rate vs design | **0.90e-3 – 1.12e-3** against 1e-3, over nine orders of magnitude of noise |
 | Credible interval coverage | **95.3 %** achieved for the 95 % ring |
 | Requirements | **42 MET**, 2 PARTIAL, 1 BLOCKED, traceability enforced by a test |
-| Tests | **432**, 88 % coverage |
+| Tests | **444**, 91 % coverage |
 
 It records **signal metadata, never communication content** — see
 [`docs/06_legal_ethics.md`](docs/06_legal_ethics.md). That is not a disclaimer bolted on
@@ -46,7 +46,7 @@ The pipeline is identical for live capture and for replay, so everything below r
 clone with nothing plugged in.
 
 ```bash
-poetry run pytest                    # 432 tests
+poetry run pytest                    # 444 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```
@@ -187,15 +187,17 @@ Measured by `esm446-bench` on the development machine, at 2 MS/s over 160 channe
 | | CPU-s per signal second | Margin |
 |---|---|---|
 | v0 per-channel mixer and filter, 800 kS/s, 57 channels | 6.9 | **drops signal** |
-| Polyphase filter bank | 0.17 | 6× real time |
-| Full node pipeline | 0.21 | 5× real time |
+| Polyphase filter bank | 0.17 | 5.8× real time |
+| Full node pipeline | 0.23 | 4.4× real time |
 
-The channeliser is roughly **41× faster than v0 normalised by signal duration**, while
+The channeliser is roughly **40× faster than v0 normalised by signal duration**, while
 covering 2.5× the bandwidth and 2.8× the channels.
 
-These are wall-clock figures and move with machine load, so treat them as approximate and
-reproduce them with `poetry run esm446-bench`. CI gates on the measurement rather than on
-this table, which is what stops the two drifting apart.
+Each figure is the **median of five runs**, which is not fussiness: a single wall-clock
+measurement of this pipeline varies by up to 45 % with machine load, and the full node
+ranged from 0.23 to 0.34 across the five. Quoting one run as *the* number would be false
+precision. Reproduce them with `poetry run esm446-bench`; CI gates on the measurement rather
+than on this table, which is what stops the two drifting apart.
 
 ## Design notes
 
@@ -228,7 +230,7 @@ that would invite exactly the wrong question.
 | 3 | Metadata sinks, Electronic Order of Battle, Monte-Carlo geolocation, CoT/TAK | merged |
 | 4 | Two-emitter acceptance test merged; calibration blocked ([#41](https://github.com/alesan121/esm446/issues/41)) | partial |
 | 5 | Systems-engineering documentation and V&V report | merged |
-| 6 | Packaging: hardware-free demo and results | planned |
+| 6 | Packaging: hardware-free demo, dashboard and results | merged |
 
 ## License
 

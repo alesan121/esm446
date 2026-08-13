@@ -43,7 +43,7 @@ artefact rather than a document somebody maintains by hand.
 | Requirement | Result |
 |---|---|
 | REQ-FUN-001 — channels on the 12.5 kHz raster | **MET.** Bin mapping agrees with the independent Octave derivation in `matlab/channel_plan.m` |
-| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — measured 94.1 dB** |
+| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — 92.9 dB measured on a modulated emitter; 94.1 dB from the prototype's response alone** |
 
 The rejection figure has history worth keeping. An earlier revision placed the prototype's
 −6 dB point midway between the channel edge and the alias limit, reasoning that this "used"
@@ -200,8 +200,8 @@ estimator's single shadowing sigma implied.
 
 | Requirement | Result |
 |---|---|
-| REQ-PER-001 — real time with ≥2× margin | **MET — 0.26 CPU-s/s, 3.8× real time** |
-| REQ-PER-002 — channeliser under 0.5 CPU-s/s | **MET — 0.21** |
+| REQ-PER-001 — real time with ≥2× margin | **MET — 0.23 CPU-s/s median, 4.4× real time** |
+| REQ-PER-002 — channeliser under 0.5 CPU-s/s | **MET — 0.17 median** |
 | REQ-PER-003 — survey under 5 % of the channeliser | **MET — 0.009** |
 | REQ-PER-004 — memory does not scale with capture length | **MET** |
 | REQ-IF-001 — CoT validates against the schema | **MET** |
@@ -211,9 +211,13 @@ estimator's single shadowing sigma implied.
 | REQ-IF-008/009 — records round-trip; older stores stay readable | **MET** |
 
 v0 needed **6.9** CPU-seconds per signal second at a quarter of the bandwidth and a third of
-the channels, so roughly **85 % of the incoming signal was never examined**. Throughput
-figures move with machine load; CI gates on the measurement rather than on this table, which
-is what stops the two drifting apart.
+the channels, so roughly **85 % of the incoming signal was never examined**.
+
+Every throughput figure here is the **median of five runs**, and the range is published in
+`figures/results.json` alongside it. One run of this pipeline varies by up to 45 % with
+machine load — the full node ranged 0.23 to 0.34 across the five taken for this report — so a
+single measurement quoted as *the* number is false precision. CI gates on the measurement
+rather than on this table, which is what stops the two drifting apart.
 
 ---
 

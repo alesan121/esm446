@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from esm446.core import bands
+from esm446.core import bands, geolocation
 from esm446.core.rfchain import RfChain, Stage
 
 MATLAB_DIR = Path("matlab")
@@ -168,6 +168,71 @@ def test_the_far_field_floor_is_applied() -> None:
     assert far_field == pytest.approx(3 * 299_792_458 / 446.09375e6, abs=0.01)
     assert extract(output, "inff") == 0.0
     assert extract(output, "closest") >= far_field
+
+
+# --------------------------------------------------------------------------------------
+# Monte Carlo geolocation
+# --------------------------------------------------------------------------------------
+
+
+def test_the_closed_form_median_agrees_with_python() -> None:
+    """Two random draws cannot be compared, so both are compared against the same algebra.
+
+    With nothing uncertain the median is exact: invert the log-distance model once. If the
+    two implementations disagree here, they disagree about the model itself.
+    """
+    output = run_octave(
+        "r = geolocation_monte_carlo('received_dbm', -95, 'with_sensitivity', 0); "
+        "printf('median = %.6f\\n', r.d_median_analytic);"
+    )
+    prior = geolocation.PropagationPrior(
+        path_loss_exponent_sigma=0.0,
+        shadowing_sigma_db=0.0,
+        eirp_sigma_db=0.0,
+        calibration_sigma_db=0.0,
+    )
+    expected = geolocation.estimate_range(
+        -95.0, 446.09375e6, prior=prior, draws=64, seed=1
+    ).median_m
+
+    assert extract(output, "median") == pytest.approx(expected, rel=1e-6)
+
+
+def test_the_shadowing_only_percentile_agrees_with_python() -> None:
+    """The log-normal closed form, which both Monte Carlo implementations must reproduce.
+
+    d_p = d_median * 10^(z_p * sigma_db / (10 * n)). Octave computes it in closed form; Python
+    reaches it by drawing, so agreement to a fraction of a per cent checks the draw as well as
+    the algebra.
+    """
+    output = run_octave(
+        "r = geolocation_monte_carlo('received_dbm', -95, 'with_sensitivity', 0); "
+        "printf('d95 = %.6f\\n', r.d95_analytic);"
+    )
+    prior = geolocation.PropagationPrior(
+        path_loss_exponent_sigma=0.0,
+        eirp_sigma_db=0.0,
+        calibration_sigma_db=0.0,
+        shadowing_sigma_db=8.0,
+    )
+    drawn = geolocation.estimate_range(-95.0, 446.09375e6, prior=prior, draws=400_000, seed=5).ring(
+        95
+    )
+
+    assert extract(output, "d95") == pytest.approx(drawn, rel=0.01)
+
+
+def test_both_implementations_agree_the_exponent_dominates() -> None:
+    """The conclusion, not just the numbers: narrowing the exponent is the only thing worth
+    measuring while it is a guess."""
+    output = run_octave(
+        "r = geolocation_monte_carlo('received_dbm', -95); "
+        "printf('exp = %.4f\\n', r.spread.path_loss_exp_sigma); "
+        "printf('shadow = %.4f\\n', r.spread.shadowing_sigma_db); "
+        "printf('cal = %.4f\\n', r.spread.calibration_sigma_db);"
+    )
+    assert extract(output, "exp") > 3 * extract(output, "shadow")
+    assert extract(output, "exp") > 10 * extract(output, "cal")
 
 
 def test_every_script_runs_end_to_end() -> None:

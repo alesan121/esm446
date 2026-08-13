@@ -19,7 +19,8 @@ shadow these files.
 | `link_budget.m` | What does the receive chain hear, and what does the external LNA buy? |
 | `measurement_setup.m` | How close can a transmitter be before the receiver stops being linear? |
 | `channel_plan.m` | Where do the channels, the DC spur and the IQ images land? |
-| `esm446_analysis.m` | Runs all three and prints the report. |
+| `geolocation_monte_carlo.m` | How far away is the emitter, and how wrong can that be? |
+| `esm446_analysis.m` | Runs all four and prints the report. |
 
 ## Why these are separate from the Python
 
@@ -65,6 +66,30 @@ Channel plan, comparing the centre frequency that was chosen first with the one 
 
 Both satisfy grid alignment, which was the only constraint considered at first. Only one
 keeps the receiver's own artefacts out of the allocation.
+
+Range from a single omnidirectional sensor, for a signal arriving at −95 dBm:
+
+| | distance |
+|---|---|
+| 5 % | 130 m |
+| **50 %** | **572 m** |
+| 68 % | 965 m |
+| 95 % | 5 408 m |
+
+The 5–95 % interval spans a factor of **42**, and that is the useful result rather than the
+572 m. Taking each uncertainty on its own:
+
+| assumption | 5–95 % span it produces alone |
+|---|---|
+| **path loss exponent, ±0.5** | **×25.0** |
+| shadowing, 8 dB | ×5.6 |
+| emitter EIRP, ±3 dB | ×1.9 |
+| receiver calibration, ±2 dB | ×1.5 |
+
+So the exponent decides the answer and everything else is detail. Buying an attenuator to
+calibrate the receiver would improve a range estimate by almost nothing while the exponent is
+a textbook value rather than a measurement — which is worth knowing before spending the
+money, and is the opposite of what the v0 estimator's single shadowing sigma suggested.
 
 ## Assumptions
 

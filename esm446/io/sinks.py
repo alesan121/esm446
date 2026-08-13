@@ -61,6 +61,8 @@ _COLUMNS = (
     "lna_db",
     "vga_db",
     "amp_enabled",
+    "attributed_to_hz",
+    "attribution",
 )
 
 #: The insert statement, written out rather than assembled from `_COLUMNS`.
@@ -74,9 +76,22 @@ _INSERT_SQL = """
     INSERT INTO emissions (
         timestamp, frequency_hz, pmr_channel, bin_index, duration_s, peak_power_dbfs,
         snr_db, estimated_dbm, calibrated, ctcss_tone_hz, classification, offset_s,
-        peak_deviation_hz, lna_db, vga_db, amp_enabled
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        peak_deviation_hz, lna_db, vga_db, amp_enabled, attributed_to_hz, attribution
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+#: Columns added after the first release, each with the statement that adds it. A database
+#: written by an earlier version is missing them, and ``CREATE TABLE IF NOT EXISTS`` will not
+#: notice: it sees a table and stops. Losing an archive to a schema change would defeat the
+#: point of keeping one, so each is added to an existing table instead.
+#:
+#: The statements are spelled out for the same reason `_INSERT_SQL` is -- see #36. Assembling
+#: them from the column name would put SQL back together by interpolation, and a rule that
+#: gets worked around stops being a rule.
+_ADDED_COLUMNS = {
+    "attributed_to_hz": "ALTER TABLE emissions ADD COLUMN attributed_to_hz REAL",
+    "attribution": "ALTER TABLE emissions ADD COLUMN attribution TEXT",
+}
 
 
 def _flatten(report: EmissionReport) -> dict[str, Any]:
@@ -196,13 +211,28 @@ class SqliteSink(EmissionSink):
                 peak_deviation_hz REAL    NOT NULL,
                 lna_db            REAL,
                 vga_db            REAL,
-                amp_enabled       INTEGER
+                amp_enabled       INTEGER,
+                attributed_to_hz  REAL,
+                attribution       TEXT
             );
             -- Occupancy queries scan by time and group by channel, so both are indexed.
             CREATE INDEX IF NOT EXISTS idx_emissions_time    ON emissions(timestamp);
             CREATE INDEX IF NOT EXISTS idx_emissions_channel ON emissions(pmr_channel);
             """)
+        self._add_missing_columns()
         self._connection.commit()
+
+    def _add_missing_columns(self) -> None:
+        """Bring a database written by an earlier version up to the current schema.
+
+        Additive only, and each column is nullable, so an older archive keeps every record it
+        has and simply reports ``NULL`` for what was never measured.
+        """
+        present = {row["name"] for row in self._connection.execute("PRAGMA table_info(emissions)")}
+        for name, statement in _ADDED_COLUMNS.items():
+            if name not in present:
+                self._connection.execute(statement)
+                logger.info("sink: added column %s to an existing archive", name)
 
     def write(self, reports: list[EmissionReport]) -> int:
         if not reports:
@@ -294,6 +324,10 @@ def _to_report(row: dict[str, Any]) -> EmissionReport:
         offset_s=float(row["offset_s"]),
         peak_deviation_hz=float(row["peak_deviation_hz"]),
         gains=gains,
+        # Absent from an archive written before attribution existed, which is a record that
+        # was never examined rather than one examined and found to be an emission.
+        attributed_to_hz=row.get("attributed_to_hz"),
+        attribution=row.get("attribution"),
     )
 
 

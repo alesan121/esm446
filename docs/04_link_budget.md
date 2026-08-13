@@ -117,10 +117,31 @@ Both units of the same model show it within about 2 dB. That is the shape of a *
 emitter identification** feature: it distinguishes two radios that share a channel plan and,
 in the test that produced these numbers, would have shared a CTCSS code.
 
-The node currently reports these as separate emissions on the neighbouring channels, which is
-[#26](https://github.com/alesan121/esm446/issues/26). They are real emissions and should be
-attributed to their emitter rather than suppressed — hiding them would discard a measurement
-of the transmitter's spectral purity.
+The node reports these as detections on the neighbouring channels, because they are energy on
+those channels and the detector is right about them. `esm446.analysis.artefacts` then
+attributes each to the carrier that produced it, by the arithmetic relation it obeys — the
+splatter pairs are symmetric about the carrier to within 211 Hz. They are kept rather than
+suppressed, since hiding them would discard this measurement.
+
+## Measured: transmitter intermodulation
+
+With both handsets transmitting at once, 62.5 kHz apart, a second mechanism appears that a
+single transmitter cannot produce — third-order products at 2·f₁−f₂ and 2·f₂−f₁:
+
+| predicted | measured | error | level |
+|---|---|---|---|
+| 445.968 813 MHz | 445.968 917 MHz | **+104 Hz** | −22.0 dBc |
+| 446.156 190 MHz | 446.156 089 MHz | **−101 Hz** | −25.1 dBc |
+
+Each product carries the sub-audible tone of the carrier whose frequency is doubled, which is
+what the mixing implies and confirms the attribution independently of the frequencies.
+
+Where the nonlinearity sits is not established. Two handsets three metres apart each receive
+the other at a substantial level, so transmitter intermodulation is as plausible as the
+receiver's own; separating them needs the products measured against transmitter separation,
+which the available space does not allow. The receiver was at LNA 0 / VGA 0 and not
+compressing on either carrier, which makes the receiver the less likely of the two but does
+not settle it.
 
 ## What remains unmeasured
 

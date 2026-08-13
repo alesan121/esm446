@@ -76,6 +76,11 @@ class EmissionReport:
         peak_deviation_hz: Peak FM deviation, an emitter discriminant.
         gains: Receiver gain configuration in force, without which the power figures
             cannot be calibrated after the fact.
+        attributed_to_hz: Centre frequency of the emission this one is believed to be a
+            by-product of, or ``None``. Set by `esm446.analysis.artefacts`, never by the
+            detector, which sees one cell at a time and cannot know.
+        attribution: How it was produced -- ``SPLATTER`` or ``INTERMOD3`` -- or ``None``
+            for an emission taken at face value.
     """
 
     timestamp: float
@@ -92,6 +97,8 @@ class EmissionReport:
     offset_s: float
     peak_deviation_hz: float
     gains: dict[str, Any] = field(default_factory=dict)
+    attributed_to_hz: float | None = None
+    attribution: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return the report as a plain dictionary, ready for JSON serialisation."""

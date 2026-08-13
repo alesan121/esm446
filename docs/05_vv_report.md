@@ -300,11 +300,38 @@ sentinel, `estimate_from_report` returns `None`, and the link budget's predicted
 figures are labelled as computed from datasheet values for a device that has not been
 characterised. See [#41](https://github.com/alesan121/esm446/issues/41).
 
-**REQ-CAL-006 — frequency accuracy. PARTIAL.** Reported frequencies are consistent to within
-tens of hertz across captures, but nothing establishes that they are *correct*. The HackRF's
-crystal drifts by several parts per million, which at 446 MHz is hundreds of hertz of
-systematic error. Calibrating against a broadcast carrier would settle it and has not been
-done.
+**REQ-CAL-006 — frequency accuracy. PARTIAL, and the attempt is worth reporting.** Reported
+frequencies are consistent to within tens of hertz across captures, but nothing establishes
+that they are *correct*. A crystal several parts per million out is stable and wrong, and at
+446 MHz a few parts per million is a few hundred hertz — comparable to the whole spread the
+emitter grouping is built around.
+
+The measurement is implemented, tested against synthetic references of known frequency, and
+available as `esm446-calibrate-frequency`. It was not possible to take:
+
+- A terrestrial television multiplex is the right reference, because a single-frequency
+  network cannot function unless every transmitter in it is locked to a common source. A scan
+  of ten channels across 474–690 MHz found every one of them within 2 dB of the others, which
+  is the receiver's own noise: nothing was receivable. The antenna is a quarter-wave whip cut
+  for 446 MHz, used indoors.
+- The same scan across the LTE downlink bands, 796–2160 MHz, found the same.
+- FM broadcast *is* receivable — 38 dB of structure at 98 MHz — and is not usable. The signal
+  is frequency-modulated, so there is no discrete carrier, and the regulated tolerance on a
+  broadcast carrier is wider than the error being looked for.
+- The project's own handsets are crystals of unknown error. Calibrating one uncalibrated
+  oscillator against another measures nothing.
+
+So the honest position is that the tool exists and the reference does not. The wideband
+antenna in the same equipment list, 700–2700 MHz, would very likely receive the LTE downlink
+that the whip could not, which makes this a one-command measurement rather than an open
+problem.
+
+The tool refuses rather than answers when no reference is present, and that guard is a
+statement about shape rather than level: measured on a 10 MHz capture a real multiplex returns
+7.607 MHz of occupied bandwidth against an expected 7.610, while pure noise returns 9.994 MHz —
+the whole span, because the edge finder walked to the ends of the capture without finding an
+edge. Levels do not separate the two cases at all; on an 8 MHz capture of an 8 MHz channel the
+peak stands about a decibel above the median either way.
 
 **Specific emitter identification — attempted, and it failed.** The ±37.5 kHz spurious pair
 was the strongest candidate: discrete, repeatable, and a property of the transmitter rather

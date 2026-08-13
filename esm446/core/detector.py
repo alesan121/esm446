@@ -30,6 +30,35 @@ window inflates the CA-CFAR noise estimate and masks the weaker one. An order st
 below the interferer's rank simply ignores it. The price is roughly 0.5 dB of detection
 loss in pure noise, which is a good trade in a band whose normal condition is several
 simultaneous users.
+
+The pair test, and why it is off by default
+-------------------------------------------
+An emitter halfway between two bins loses 6.02 dB (see `esm446.core.channelizer`). Testing
+adjacent bins as a summed cell recovers part of that, and `os_pair_threshold_factor` derives
+the threshold for it exactly. Measured, as the SNR at which half of frames detect:
+
+===========  ==========  ========  ========
+offset       single-bin  + pairs   change
+===========  ==========  ========  ========
+0.00 bins    14.81 dB    15.19 dB  -0.38 dB
+0.25 bins    14.81 dB    15.06 dB  -0.25 dB
+0.40 bins    15.69 dB    15.94 dB  -0.25 dB
+0.50 bins    20.19 dB    18.94 dB  **+1.25 dB**
+===========  ==========  ========  ========
+
+Worst-case ripple falls from 5.38 dB to 3.75 dB, paid for with 0.25 to 0.38 dB everywhere
+else -- the cost of splitting the false alarm budget across two tests.
+
+Averaged over offsets that is roughly a wash, and on the recorded two-emitter capture it was
+worse than a wash: the 0.38 dB pushed a genuine sideband detection at 6.6 dB SNR below the
+threshold, which broke the symmetric-pair arithmetic `esm446.analysis.artefacts` uses to
+attribute splatter, while adding several detections at negative single-bin SNR whose
+frequency estimates are too poor to attribute. Measured on synthetic tones the test is a
+modest win; measured on the real captures it made the system's output worse.
+
+So it ships implemented, verified, and **off**. Turn it on where the worst-case off-grid
+emitter matters more than 0.3 dB everywhere and more than the quality of weak detections --
+which is a real operating point, just not this one.
 """
 
 from __future__ import annotations
@@ -68,6 +97,10 @@ class CfarConfig:
         os_rank_fraction: For OS-CFAR, which order statistic to use as a fraction of
             ``num_reference``. 0.75 is the usual robust choice: high enough to be a good
             noise estimate, low enough to reject a few interferers.
+        detect_pairs: Whether to run a second test on the sum of each adjacent bin pair,
+            which recovers about 2 dB for an emitter sitting between two bins. The false
+            alarm budget is split between the two tests, so the design ``pfa`` still bounds
+            the pair of them together and enabling it costs 0.3 dB on the single-bin test.
         update_interval: Frames between noise-floor estimates. The estimate is held for
             the frames in between.
 
@@ -91,6 +124,7 @@ class CfarConfig:
     method: str = "os"
     os_rank_fraction: float = 0.75
     update_interval: int = 64
+    detect_pairs: bool = False
 
     def __post_init__(self) -> None:
         if self.num_reference < 2 or self.num_reference % 2 != 0:
@@ -142,6 +176,79 @@ def os_threshold_factor(num_reference: int, rank: int, pfa: float) -> float:
     return float(np.exp(optimize.brentq(log_pfa, -20.0, 30.0, xtol=1e-12)))
 
 
+def ca_pair_threshold_factor(num_reference: int, pfa: float) -> float:
+    """CA-CFAR threshold factor for the sum of two adjacent cells.
+
+    The companion to `os_pair_threshold_factor`, derived the same way but against the cell
+    average rather than an order statistic. With ``S`` the mean of ``N`` exponential
+    reference cells and the test statistic gamma-distributed with two degrees of freedom,
+
+        P_fa(alpha) = M(beta) * (1 + beta / (1 + beta/N)),  beta = 2*alpha
+        M(beta)     = (1 + beta/N)**-N
+
+    which is closed form and needs only a root find to invert.
+
+    Args:
+        num_reference: Reference cells in the CFAR window.
+        pfa: Design false alarm probability for this test.
+
+    Returns:
+        The threshold factor, applied to a single cell's noise estimate.
+    """
+
+    def log_pfa(log_alpha: float) -> float:
+        beta = 2.0 * np.exp(log_alpha)
+        ratio = 1.0 + beta / num_reference
+        return float(-num_reference * np.log(ratio) + np.log1p(beta / ratio) - np.log(pfa))
+
+    return float(np.exp(optimize.brentq(log_pfa, -20.0, 30.0, xtol=1e-12)))
+
+
+def os_pair_threshold_factor(num_reference: int, rank: int, pfa: float) -> float:
+    """OS-CFAR threshold factor for the sum of two adjacent cells.
+
+    An emitter is under no obligation to land on a bin centre, and one halfway between two
+    bins puts half its energy in each. Testing the pair as one cell is the obvious response,
+    and it works -- but not for the obvious reason, which is worth setting down because the
+    intuition is wrong in a way that would lead to overstating the gain.
+
+    Summing two bins does **not** recover the split energy in any useful sense: the noise in
+    the two bins sums along with the signal, so the ratio of one to the other is exactly what
+    it was in a single bin. What the sum does buy is *variance*. One exponential cell has a
+    standard deviation equal to its mean; the sum of two has a relative spread smaller by a
+    factor of sqrt(2), so the threshold that achieves a given false alarm rate sits closer to
+    the mean. That is non-coherent integration gain, and measured here it is about 2 dB.
+
+    The false alarm probability follows the same route as `os_threshold_factor`. With ``U``
+    the ``k``-th order statistic of ``N`` reference cells normalised by the true mean, and the
+    test statistic gamma-distributed with two degrees of freedom,
+
+        P_fa(alpha) = E[ exp(-2*alpha*U) * (1 + 2*alpha*U) ]
+                    = M(2*alpha) * (1 + 2*alpha * sum_i 1/(N - i + 2*alpha))
+
+    where ``M(beta) = prod_i (N - i) / (N - i + beta)`` is the same expectation the
+    single-cell case reduces to. The factor of two inside comes from the pair's noise
+    estimate being twice a single cell's.
+
+    Args:
+        num_reference: Reference cells in the CFAR window.
+        rank: Order statistic used as the noise estimate.
+        pfa: Design false alarm probability for this test.
+
+    Returns:
+        The threshold factor, applied to a single cell's noise estimate.
+    """
+    indices = np.arange(rank)
+
+    def log_pfa(log_alpha: float) -> float:
+        beta = 2.0 * np.exp(log_alpha)
+        log_m = np.sum(np.log((num_reference - indices) / (num_reference - indices + beta)))
+        correction = np.log1p(beta * np.sum(1.0 / (num_reference - indices + beta)))
+        return float(log_m + correction - np.log(pfa))
+
+    return float(np.exp(optimize.brentq(log_pfa, -20.0, 30.0, xtol=1e-12)))
+
+
 @dataclass
 class Detection:
     """One emitter detection in one CFAR frame."""
@@ -167,12 +274,68 @@ class CfarDetector:
 
     def __init__(self, config: CfarConfig | None = None) -> None:
         self.config = config or CfarConfig()
+
+        # Two tests run on every cell when pair detection is on, so the design false alarm
+        # rate is split between them and their union still respects it. The union bound is
+        # what matters operationally: a false alarm is a false alarm whichever test raised
+        # it. Splitting costs 0.3 dB, which is cheap against the 2 dB the pair test returns.
+        per_test_pfa = self.config.pfa / 2.0 if self.config.detect_pairs else self.config.pfa
+
         if self.config.method == "ca":
-            self.threshold_factor = ca_threshold_factor(self.config.num_reference, self.config.pfa)
+            self.threshold_factor = ca_threshold_factor(self.config.num_reference, per_test_pfa)
         else:
             self.threshold_factor = os_threshold_factor(
-                self.config.num_reference, self.config.os_rank, self.config.pfa
+                self.config.num_reference, self.config.os_rank, per_test_pfa
             )
+
+        if not self.config.detect_pairs:
+            self.pair_threshold_factor = float("inf")
+        elif self.config.method == "ca":
+            self.pair_threshold_factor = ca_pair_threshold_factor(
+                self.config.num_reference, per_test_pfa
+            )
+        else:
+            self.pair_threshold_factor = os_pair_threshold_factor(
+                self.config.num_reference, self.config.os_rank, per_test_pfa
+            )
+
+    def pair_mask(
+        self,
+        power: np.ndarray,
+        noise: np.ndarray,
+        exclude: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Flag bins belonging to an adjacent pair whose summed power crosses the threshold.
+
+        Reuses the single-bin noise estimate rather than computing a second one. The noise in
+        a pair is the sum of the noise in its two bins, which on a locally flat floor is twice
+        one bin's -- and the OS estimate is the expensive part of the detector, so not
+        repeating it is what makes this test essentially free.
+
+        Both bins of a crossing pair are flagged. Reporting them as one emitter is already
+        handled downstream by the adjacent-bin merge, which exists for exactly this geometry.
+
+        Args:
+            power: Per-bin power, shape ``(frames, bins)`` or ``(bins,)``.
+            noise: Noise estimate of the same shape.
+            exclude: Optional per-bin mask of bins that carry something other than signal --
+                the local oscillator leakage at DC, for instance. Any pair containing one is
+                not tested. Without this the spur pairs with its neighbour and flags it,
+                which turns one excluded bin into an emission on the next channel along.
+
+        Returns:
+            Boolean mask of the same shape.
+        """
+        if not self.config.detect_pairs:
+            return np.zeros_like(power, dtype=bool)
+
+        # Pair k is bins k and k+1, wrapping at the band edge as the rest of the detector does.
+        paired_power = power + np.roll(power, -1, axis=-1)
+        paired_noise = noise + np.roll(noise, -1, axis=-1)
+        crossed = paired_power > paired_noise * self.pair_threshold_factor
+        if exclude is not None:
+            crossed &= ~(exclude | np.roll(exclude, -1, axis=-1))
+        return crossed | np.roll(crossed, 1, axis=-1)
 
     def noise_estimate(self, power: np.ndarray) -> np.ndarray:
         """Estimate noise power local to each bin, excluding the cell under test and guards.
@@ -248,10 +411,22 @@ class CfarDetector:
         ]
         return sorted(detections, key=lambda d: d.snr_db, reverse=True)
 
-    def detection_mask(self, power: np.ndarray) -> np.ndarray:
+    def detection_mask(self, power: np.ndarray, exclude: np.ndarray | None = None) -> np.ndarray:
         """Boolean mask of detections, for whole blocks of frames at once.
 
-        Accepts shape ``(frames, bins)`` and returns the same shape, which is how the
-        measured false alarm rate is checked against the design point in the test suite.
+        Both tests, because both are what the detector does: a cell crossing on its own, and
+        a cell belonging to an adjacent pair that crosses together. The design ``pfa`` bounds
+        their union, so this is also the mask whose measured false alarm rate the test suite
+        compares against the design point -- measuring only one of two tests would report half
+        the rate the system actually produces.
+
+        Args:
+            power: Per-bin power, shape ``(frames, bins)`` or ``(bins,)``.
+            exclude: Bins that must not take part in a pair. See `pair_mask`.
+
+        Returns:
+            Boolean mask of the same shape.
         """
-        return power > self.threshold(power)
+        noise = self.noise_estimate(power)
+        mask = power > noise * self.threshold_factor
+        return mask | self.pair_mask(power, noise, exclude)

@@ -184,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
             "source_rate_hz": args.source_rate,
             "start_s": args.start,
             "duration_s": args.duration,
+            # The capture's own start time, so replaying the vector reports when the signal
+            # happened rather than when it was analysed.
+            "start_time": args.capture.stat().st_mtime - args.start,
             "centre_hz": VECTOR_CENTRE_HZ,
             "sample_rate_hz": VECTOR_SAMPLE_RATE_HZ,
             "num_channels": 40,

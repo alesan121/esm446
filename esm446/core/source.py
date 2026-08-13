@@ -30,7 +30,9 @@ power figure is out by tens of dB.
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from types import TracebackType
@@ -54,10 +56,19 @@ class IQSource(ABC):
     Attributes:
         sample_rate: Sample rate in Hz.
         centre_frequency: Centre frequency in Hz.
+        start_time: Unix time at which the *capture* began.
+
+            This exists because the obvious alternative is wrong. Taking the clock when
+            analysis starts labels a recording with when it was replayed, so a capture made
+            at 01:07 and analysed at 01:35 is filed under 01:35. Everything downstream that
+            bins by time -- occupancy by hour, pattern of life, any correlation between
+            emitters -- would then be computed over the analyst's schedule rather than the
+            band's.
     """
 
     sample_rate: float
     centre_frequency: float
+    start_time: float
 
     @abstractmethod
     def read(self, num_samples: int) -> np.ndarray | None:
@@ -113,6 +124,7 @@ class FileSource(IQSource):
         self.sample_format = sample_format
         self._dtype, self._full_scale = SAMPLE_FORMATS[sample_format]
         self._handle = self.path.open("rb")
+        self.start_time = self._infer_start_time()
 
         logger.info(
             "source: replaying %s (%s, %.3f MS/s at %.6f MHz)",
@@ -121,6 +133,36 @@ class FileSource(IQSource):
             sample_rate / 1e6,
             centre_frequency / 1e6,
         )
+
+    def _infer_start_time(self) -> float:
+        """Work out when the recording began.
+
+        Three sources, in descending order of trustworthiness:
+
+        1. A sidecar ``.json`` written alongside the capture, if it carries ``start_time``.
+        2. The file's modification time minus its duration. Modification time is when the
+           writer *finished*, so subtracting the length recovers the start -- exact for a
+           capture written straight through, which is how every capture here is made.
+        3. The modification time alone, when the duration is unknown.
+
+        None of these is a timestamped sample stream, and a capture that was paused mid-write
+        would defeat the second. Where that matters the sidecar is the answer.
+
+        Returns:
+            Unix time at which the capture began.
+        """
+        sidecar = self.path.with_suffix(".json")
+        if sidecar.exists():
+            try:
+                payload = json.loads(sidecar.read_text())
+                if "start_time" in payload:
+                    return float(payload["start_time"])
+            except (ValueError, OSError):
+                logger.warning("source: could not read %s, falling back to file times", sidecar)
+
+        modified = self.path.stat().st_mtime
+        duration = self.duration_seconds
+        return modified - duration if duration > 0 else modified
 
     @property
     def total_samples(self) -> int:
@@ -158,9 +200,16 @@ class ArraySource(IQSource):
     Used by tests and by the scenario simulator, which generates a whole take at once.
     """
 
-    def __init__(self, samples: np.ndarray, sample_rate: float, centre_frequency: float) -> None:
+    def __init__(
+        self,
+        samples: np.ndarray,
+        sample_rate: float,
+        centre_frequency: float,
+        start_time: float | None = None,
+    ) -> None:
         self.sample_rate = sample_rate
         self.centre_frequency = centre_frequency
+        self.start_time = time.time() if start_time is None else start_time
         self._samples = samples.astype(np.complex64, copy=False)
         self._position = 0
 
@@ -209,6 +258,9 @@ class SoapySource(IQSource):
         self.sample_rate = sample_rate
         self.centre_frequency = centre_frequency
         self.channel = channel
+        # Live capture: the clock now is the capture time, which is the one case where
+        # reading the wall clock is the right answer.
+        self.start_time = time.time()
 
         self._device = SoapySDR.Device({"driver": driver})
 

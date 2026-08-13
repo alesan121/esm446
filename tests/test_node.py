@@ -285,3 +285,57 @@ def test_node_report_serialises_to_json() -> None:
     payload = reports[0].as_dict()
     assert payload["pmr_channel"] == 6
     assert "peak_power_dbfs" in payload
+
+
+def test_replaying_a_file_reports_when_it_was_captured(tmp_path: Path) -> None:
+    """A recording must not be relabelled with the time it was analysed.
+
+    The node used to take the wall clock when `run()` started, so a capture made at 01:07 and
+    analysed at 01:35 was filed under 01:35. Everything that bins by time -- occupancy by
+    hour, pattern of life -- would then be computed over the analyst's schedule instead of
+    the band's, and the archive would be wrong the moment it was written.
+    """
+    import os
+
+    scene = synthesise_scene(
+        [{"channel": 3, "amplitude": 0.05, "ctcss_hz": None, "start_s": 0.3, "stop_s": 1.1}]
+    )
+    path = tmp_path / "capture.cf32"
+    scene.view(np.float32).tofile(path)
+
+    captured_at = 1_700_000_000.0
+    os.utime(path, (captured_at, captured_at + len(scene) / SAMPLE_RATE))
+
+    reports = build_node().run(FileSource(path, SAMPLE_RATE, CENTRE, "cf32"))
+
+    assert reports
+    assert reports[0].timestamp == pytest.approx(captured_at + reports[0].offset_s, abs=0.1)
+    assert reports[0].timestamp < 1_800_000_000.0, "reported the replay time, not the capture"
+
+
+def test_the_offset_locates_the_emission_in_the_recording() -> None:
+    """Carried alongside the absolute time because two vectors were cut from the wrong place.
+
+    Reading the reported timestamp as a file position is a mistake the record should make
+    impossible rather than merely discourage.
+    """
+    scene = synthesise_scene(
+        [{"channel": 3, "amplitude": 0.05, "ctcss_hz": None, "start_s": 0.4, "stop_s": 1.2}]
+    )
+    reports = build_node().run(ArraySource(scene, SAMPLE_RATE, CENTRE))
+
+    assert reports[0].offset_s == pytest.approx(0.4, abs=0.1)
+
+
+def test_replaying_twice_gives_identical_timestamps(tmp_path: Path) -> None:
+    """A capture's time is a property of the capture, so two analyses must agree."""
+    scene = synthesise_scene(
+        [{"channel": 3, "amplitude": 0.05, "ctcss_hz": None, "start_s": 0.3, "stop_s": 1.1}]
+    )
+    path = tmp_path / "capture.cf32"
+    scene.view(np.float32).tofile(path)
+
+    first = build_node().run(FileSource(path, SAMPLE_RATE, CENTRE, "cf32"))
+    second = build_node().run(FileSource(path, SAMPLE_RATE, CENTRE, "cf32"))
+
+    assert [r.timestamp for r in first] == [r.timestamp for r in second]

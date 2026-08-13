@@ -62,10 +62,6 @@ HACKRF_VGA_STEP_DB = 2.0
 HACKRF_VGA_MAX_DB = 62.0
 HACKRF_AMP_GAIN_DB = 14.0
 
-#: Effective number of bits of the HackRF's 8-bit ADC after processing gain, and the
-#: resulting usable window between noise floor and clipping.
-HACKRF_USABLE_DYNAMIC_RANGE_DB = 48.0
-
 #: Recommended maximum input to the HackRF antenna port for linear operation (dBm).
 #: Damage threshold is higher, around +10 dBm, but compression well below that makes any
 #: power measurement meaningless.

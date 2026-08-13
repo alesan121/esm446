@@ -41,6 +41,7 @@ def report(
         calibrated=False,
         ctcss_tone_hz=tone,
         classification="FRIEND",
+        offset_s=0.0,
         peak_deviation_hz=1346.8,
         gains={"lna_db": 0.0, "vga_db": 0.0, "amp_enabled": False},
     )

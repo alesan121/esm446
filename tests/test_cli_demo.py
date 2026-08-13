@@ -128,3 +128,28 @@ def test_shipped_demo_scenario_exists_for_the_make_target() -> None:
     """`make demo` depends on this file being present in a clean checkout."""
     assert DEMO_SCENARIO.exists()
     assert Scenario.load(DEMO_SCENARIO).duration_s > 0
+
+
+def test_the_shipped_scenario_is_not_tuned_to_a_channel() -> None:
+    """A scenario centred on a nominal channel has the node's DC guard erase that channel.
+
+    The shipped scenario was tuned to channel 8, which is where its own `charlie` emitter
+    transmits, so both of that emitter's transmissions were silently discarded and the
+    demonstration reported Pd 0.83. The receiver refuses such a centre at startup; the
+    scenario bypassed that because the demo takes its centre from the file.
+    """
+    from esm446.core import bands
+
+    scenario = Scenario.load(DEMO_SCENARIO)
+    bands.assert_centre_is_usable(scenario.centre_frequency)
+
+
+def test_the_shipped_scenario_detects_everything_it_transmits() -> None:
+    """The demonstration is the first thing a reviewer runs, so it has to be right."""
+    scenario = Scenario.load(DEMO_SCENARIO)
+    _, truth, result, _ = run_demo(scenario)
+
+    assert (
+        result.probability_of_detection == 1.0
+    ), f"the shipped demonstration misses {len(truth) - result.num_detected} of {len(truth)}"
+    assert result.spurious == []

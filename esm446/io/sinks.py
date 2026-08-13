@@ -260,6 +260,86 @@ class MultiSink(EmissionSink):
                 logger.exception("sink: %s failed to close", type(sink).__name__)
 
 
+def _to_report(row: dict[str, Any]) -> EmissionReport:
+    """Rebuild a report from a stored row.
+
+    The gains are reassembled from their three flattened columns, which is the whole reason
+    they were stored flat: a column per gain is queryable, a JSON blob is not.
+
+    Args:
+        row: One stored record, from either sink.
+
+    Returns:
+        The report it came from.
+    """
+    gains = row.get("gains")
+    if gains is None:
+        gains = {
+            "lna_db": row.get("lna_db"),
+            "vga_db": row.get("vga_db"),
+            "amp_enabled": bool(row["amp_enabled"]) if row.get("amp_enabled") is not None else None,
+        }
+    return EmissionReport(
+        timestamp=float(row["timestamp"]),
+        frequency_hz=float(row["frequency_hz"]),
+        pmr_channel=row["pmr_channel"],
+        bin_index=int(row["bin_index"]),
+        duration_s=float(row["duration_s"]),
+        peak_power_dbfs=float(row["peak_power_dbfs"]),
+        snr_db=float(row["snr_db"]),
+        estimated_dbm=row["estimated_dbm"],
+        calibrated=bool(row["calibrated"]),
+        ctcss_tone_hz=row["ctcss_tone_hz"],
+        classification=str(row["classification"]),
+        offset_s=float(row["offset_s"]),
+        peak_deviation_hz=float(row["peak_deviation_hz"]),
+        gains=gains,
+    )
+
+
+def read_reports(path: Path) -> list[EmissionReport]:
+    """Read every emission back out of a store.
+
+    The counterpart to `open_sink`, and deliberately symmetric with it: analysis reads a path
+    and gets reports, without caring which of the two formats the capture happened to use.
+
+    Args:
+        path: A ``.jsonl``, ``.db`` or ``.sqlite`` store.
+
+    Returns:
+        The stored emissions, oldest first.
+
+    Raises:
+        ValueError: If the extension is not one this module writes.
+        FileNotFoundError: If the store does not exist.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"no store at {path}")
+
+    suffix = path.suffix.lower()
+    if suffix == ".jsonl":
+        rows: list[dict[str, Any]] = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line
+        ]
+    elif suffix in (".db", ".sqlite"):
+        connection = sqlite3.connect(path)
+        connection.row_factory = sqlite3.Row
+        try:
+            rows = [
+                dict(r) for r in connection.execute("SELECT * FROM emissions ORDER BY timestamp")
+            ]
+        finally:
+            connection.close()
+    else:
+        raise ValueError(f"cannot tell what store {path} is; use .jsonl, .db or .sqlite")
+
+    reports = [_to_report(row) for row in rows]
+    reports.sort(key=lambda r: r.timestamp)
+    logger.info("sink: read %d emissions from %s", len(reports), path)
+    return reports
+
+
 def open_sink(path: Path | None) -> EmissionSink | None:
     """Choose a sink from a path's extension.
 

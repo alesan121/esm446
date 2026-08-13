@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from esm446.analysis.eob import cluster_emitters
 from esm446.core import bands
 from esm446.core.channelizer import ChannelizerConfig
 from esm446.core.node import EsmNode
@@ -116,7 +117,8 @@ TWO_METADATA = Path("tests/data/pmr446_two_emitters.json")
 
 
 @pytest.fixture(scope="module")
-def two_emitter_reports() -> list:
+def two_emitter_all_reports() -> list:
+    """Everything the node reports on the two-emitter vector, splatter included."""
     if not TWO.exists():
         pytest.skip("two-emitter vector not present")
     metadata = json.loads(TWO_METADATA.read_text())
@@ -130,8 +132,13 @@ def two_emitter_reports() -> list:
         gains=quantise_gains(0.0, 0.0),
         expected_ctcss_hz=114.8,
     )
-    reports = node.run(FileSource(TWO, metadata["sample_rate_hz"], metadata["centre_hz"], "cs8"))
-    return [r for r in reports if r.snr_db > 15.0]
+    return node.run(FileSource(TWO, metadata["sample_rate_hz"], metadata["centre_hz"], "cs8"))
+
+
+@pytest.fixture(scope="module")
+def two_emitter_reports(two_emitter_all_reports: list) -> list:
+    """Only the carriers. The weaker reports are the transmitters' own sidebands, #26."""
+    return [r for r in two_emitter_all_reports if r.snr_db > 15.0]
 
 
 def test_both_emitters_are_separated(two_emitter_reports: list) -> None:
@@ -177,6 +184,53 @@ def test_the_tones_distinguish_friend_from_unknown(two_emitter_reports: list) ->
 
     assert by_channel[3].ctcss_tone_hz == pytest.approx(141.3)
     assert by_channel[3].classification == "UNKNOWN"
+
+
+# --------------------------------------------------------------------------------------
+# Order of battle over the recording
+# --------------------------------------------------------------------------------------
+
+
+def test_the_order_of_battle_finds_the_two_carriers(two_emitter_reports: list) -> None:
+    """Two radios, two profiles, each carrying the tone that identifies it."""
+    profiles = cluster_emitters(two_emitter_reports)
+
+    assert len(profiles) == 2
+    by_channel = {p.pmr_channel: p for p in profiles}
+    assert set(by_channel) == {3, 8}
+    assert by_channel[8].ctcss_tone_hz == pytest.approx(114.8)
+    assert by_channel[3].ctcss_tone_hz == pytest.approx(141.3)
+
+
+def test_the_order_of_battle_overcounts_until_splatter_is_attributed(
+    two_emitter_all_reports: list,
+) -> None:
+    """The documented weakness, pinned so it cannot be forgotten or quietly overstated.
+
+    Grouped over everything the node reports, two handsets become more than two emitters. The
+    extra ones are the transmitters' own sidebands landing on neighbouring channels, and they
+    stay extra until #26 attributes them to the emitter that produced them.
+    """
+    profiles = cluster_emitters(two_emitter_all_reports)
+
+    assert len(profiles) > 2
+
+
+def test_a_sideband_is_recognisable_by_its_deviation(two_emitter_all_reports: list) -> None:
+    """Why the fix belongs in the detector and not in a deviation filter here.
+
+    A discriminator reading taken on a sideband is not a modulation index; it is what the
+    discriminator does when handed something that is not an FM carrier, and the figures come
+    out several times those of the real transmissions. That separation is what makes the
+    overcount diagnosable -- and using it to discard the reports would hide a measurement of
+    the transmitter's spectral purity, which is the thing worth keeping.
+    """
+    carriers = [r for r in two_emitter_all_reports if r.snr_db > 15.0]
+    sidebands = [r for r in two_emitter_all_reports if r.snr_db <= 15.0]
+    assert sidebands, "the vector is expected to contain the transmitters' splatter"
+
+    assert max(r.peak_deviation_hz for r in carriers) < 2_000.0
+    assert min(r.peak_deviation_hz for r in sidebands) > 3_000.0
 
 
 def test_the_two_emitter_vector_is_small_enough_to_commit() -> None:

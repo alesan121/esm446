@@ -176,6 +176,33 @@ property, and one that is easy to get wrong — but it would look exactly this g
 were wrong about the environment. Validating the prior needs measured distances against
 measured power, which needs REQ-CAL-004, which is blocked.
 
+### How badly it fails when the prior is wrong
+
+![Coverage under misspecification](figures/07_misspecification.png)
+
+Rather than leave that as a caveat, the exposure is measured: hold the estimator's assumptions
+fixed and move the *true* path loss exponent away from the assumed 3.5.
+
+| true exponent | 50 % ring | 95 % ring |
+|---|---|---|
+| 2.50 — near free space | 0 % | **34 %** |
+| 2.75 | 0.5 % | 74 % |
+| 3.00 | 3 % | 94 % |
+| 3.50 — as assumed | 42 % | 100 % |
+| 4.00 | 95 % | 100 % |
+| 4.50 | 100 % | 100 % |
+
+**The failure is asymmetric, and that is the useful part.** If the environment is more
+obstructed than assumed, the estimator places the emitter further out than it is and the rings
+still contain it — over-covering costs precision, not correctness. If the environment is
+*clearer* than assumed, the emitter is further away than the model can reach and the ring
+simply does not extend to it. In an open field, an exponent nearer 2.5, a ring claiming to
+hold the emitter 95 % of the time holds it **about a third** of the time.
+
+The operational consequence is a single sentence: **assume more obstruction than you think you
+have, never less.** Three tests pin it, including one asserting that the conservative error is
+the one in that direction, so the conclusion cannot be softened by editing this paragraph.
+
 **What the estimate is worth.** For a signal at −95 dBm the median is 572 m and the 5–95 %
 interval spans a factor of **42**. Taking each uncertainty alone:
 

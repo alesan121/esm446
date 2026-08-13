@@ -270,6 +270,64 @@ def figure_interval_coverage(results: dict[str, Any]) -> None:
     results["coverage_trials"] = trials
 
 
+def figure_misspecification(results: dict[str, Any]) -> None:
+    """What the coverage figure cannot tell you: how it fails when the model is wrong.
+
+    The coverage study draws its realisations from the prior the estimator assumes, so it
+    verifies the arithmetic and nothing about the environment. This sweeps the *true* path
+    loss exponent away from the assumed one and measures what the rings then achieve.
+    """
+    import matplotlib.pyplot as plt
+
+    prior = PropagationPrior()
+    exponents = np.arange(2.5, 4.6, 0.25)
+    trials = 200
+    achieved: dict[int, list[float]] = {50: [], 95: []}
+
+    for exponent in exponents:
+        rng = np.random.default_rng(7)
+        contained = dict.fromkeys(achieved, 0)
+        for trial in range(trials):
+            eirp_dbm = prior.eirp_dbm
+            shadowing_db = rng.normal(0.0, prior.shadowing_sigma_db)
+            truth_m = float(rng.uniform(50.0, 2_000.0))
+            received_dbm = eirp_dbm - path_loss_db(truth_m, FREQUENCY_HZ, exponent) - shadowing_db
+            estimate = estimate_range(
+                received_dbm, FREQUENCY_HZ, prior=prior, draws=3_000, seed=trial, calibrated=True
+            )
+            for percentile in contained:
+                contained[percentile] += truth_m <= estimate.ring(percentile)
+        for percentile, count in contained.items():
+            achieved[percentile].append(100.0 * count / trials)
+
+    figure, axis = plt.subplots(figsize=(7, 4.4))
+    for percentile, values in achieved.items():
+        axis.plot(exponents, values, "o-", markersize=4, linewidth=1.3, label=f"{percentile}% ring")
+        axis.axhline(percentile, color="grey", linestyle=":", linewidth=0.8)
+    axis.axvline(prior.path_loss_exponent, color="tab:red", linestyle="--", linewidth=1.2)
+    axis.text(prior.path_loss_exponent + 0.03, 6, "assumed", fontsize=7, color="tab:red")
+    axis.axvspan(exponents[0], prior.path_loss_exponent, color="tab:red", alpha=0.05)
+    axis.text(2.6, 88, "environment clearer than assumed:\nrings undercover", fontsize=7)
+    axis.set_ylim(-3, 103)
+    axis.legend(fontsize=8, loc="lower right")
+    _style(
+        axis,
+        "REQ-CAL-005 — coverage when the environment is not what was assumed",
+        "true path loss exponent",
+        "realisations containing the truth (%)",
+    )
+    figure.tight_layout()
+    figure.savefig(FIGURES / "07_misspecification.png", dpi=130)
+    plt.close(figure)
+
+    results["misspecification"] = {
+        f"{e:.2f}": {str(p): round(v[i], 1) for p, v in achieved.items()}
+        for i, e in enumerate(exponents)
+    }
+    worst = min(achieved[95])
+    results["worst_95_coverage_under_misspecification"] = round(worst, 1)
+
+
 def figure_benchmark(results: dict[str, Any]) -> None:
     """Where the time goes, against the v0 baseline.
 
@@ -335,6 +393,7 @@ FIGURE_BUILDERS = (
     figure_false_alarm_rate,
     figure_detection_probability,
     figure_interval_coverage,
+    figure_misspecification,
     figure_benchmark,
 )
 

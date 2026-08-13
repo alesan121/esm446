@@ -72,7 +72,7 @@ available, with the blocker named. Nothing is marked met on the strength of an i
 | REQ-CAL-002 | An uncalibrated power estimate shall be marked uncalibrated everywhere it appears. | T | `test_an_uncalibrated_estimate_is_flagged_all_the_way_through` | MET |
 | REQ-CAL-003 | The system shall refuse to produce a range estimate from an uncalibrated power reading. | T | `test_an_uncalibrated_report_produces_no_range` | MET |
 | REQ-CAL-004 | The receiver shall be characterised for absolute power against a known source. | T | — | **BLOCKED** — needs a calibrated source; see [#41](https://github.com/alesan121/esm446/issues/41) |
-| REQ-CAL-005 | Credible intervals shall contain the truth at the frequency they declare. | T | `test_the_ninety_five_percent_ring_contains_the_truth_that_often` | PARTIAL — verified against the model's own prior; the prior itself is unvalidated, which needs REQ-CAL-004 |
+| REQ-CAL-005 | Credible intervals shall contain the truth at the frequency they declare. | T | `test_the_ninety_five_percent_ring_contains_the_truth_that_often`, `test_the_rings_undercover_badly_when_the_environment_is_clearer` | PARTIAL — 95.3 % achieved against the model's own prior; the prior is unvalidated and needs REQ-CAL-004. Sensitivity to that now measured: coverage holds when the environment is more obstructed than assumed and falls to 34 % at an exponent of 2.5 |
 | REQ-CAL-006 | Frequencies reported shall be consistent across captures to within 100 Hz. | T | `test_a_drifting_handset_is_still_one_emitter` | PARTIAL — consistency verified, absolute accuracy not; the receiver's crystal is uncalibrated |
 
 ## 5. Legal and ethical requirements

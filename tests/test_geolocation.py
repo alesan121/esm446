@@ -345,3 +345,67 @@ def test_the_median_is_always_available_even_if_not_requested() -> None:
 
     assert 50 in estimate.percentiles
     assert estimate.median_m > 0.0
+
+
+# --------------------------------------------------------------------------------------
+# What happens when the model is wrong, which the coverage test cannot see
+# --------------------------------------------------------------------------------------
+
+
+def coverage_at(true_exponent: float, percentile: int, trials: int = 150) -> float:
+    """Fraction of realisations the ring contains, when the truth obeys a different exponent.
+
+    The coverage test draws its realisations from the estimator's own prior, so it verifies
+    the arithmetic and says nothing about the environment. This fixes the true exponent away
+    from the assumed one and asks what the rings then achieve.
+    """
+    prior = PropagationPrior()
+    rng = np.random.default_rng(7)
+    contained = 0
+    for trial in range(trials):
+        shadowing_db = rng.normal(0.0, prior.shadowing_sigma_db)
+        truth_m = float(rng.uniform(50.0, 2_000.0))
+        received_dbm = (
+            prior.eirp_dbm - path_loss_db(truth_m, FREQUENCY, true_exponent) - shadowing_db
+        )
+        estimate = estimate_range(
+            received_dbm, FREQUENCY, prior=prior, draws=3_000, seed=trial, calibrated=True
+        )
+        contained += truth_m <= estimate.ring(percentile)
+    return contained / trials
+
+
+def test_the_rings_stay_safe_when_the_environment_is_worse_than_assumed() -> None:
+    """The direction that does not hurt, and the reason the failure mode is worth naming.
+
+    If the real path is more obstructed than the prior assumes, the estimator places the
+    emitter further out than it is and the rings still contain it. Over-covering is a loss of
+    precision, not a wrong answer.
+    """
+    assert coverage_at(4.0, 95) >= 0.95
+    assert coverage_at(4.5, 95) >= 0.95
+
+
+def test_the_rings_undercover_badly_when_the_environment_is_clearer() -> None:
+    """The direction that does hurt, quantified rather than left as a caveat.
+
+    A clearer path than assumed means the emitter is much further away than the model allows
+    for, and the ring simply does not reach it. At an exponent of 2.5 -- near free space, which
+    is an open field or a rooftop -- the 95 % ring contains the truth about a third of the
+    time. Deployed there, four rings in five that claim to hold the emitter do not.
+
+    This is why REQ-CAL-005 is PARTIAL: the arithmetic is verified, the prior is not, and this
+    is the size of the exposure that leaves.
+    """
+    assert coverage_at(2.5, 95) < 0.5
+    assert coverage_at(3.0, 95) < 0.98
+
+
+def test_the_safe_direction_is_to_assume_more_obstruction_not_less() -> None:
+    """The operational conclusion, as a test so it cannot be softened by editing prose."""
+    clearer = coverage_at(3.0, 95)
+    obstructed = coverage_at(4.0, 95)
+
+    assert (
+        obstructed > clearer
+    ), "assuming more obstruction than there is must be the conservative error"

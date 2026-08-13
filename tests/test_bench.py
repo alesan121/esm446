@@ -88,7 +88,7 @@ def test_the_vv_figures_regenerate_from_scratch(tmp_path) -> None:
         "node_cpu_s_per_s",
     }
     assert expected <= set(results)
-    assert len(list(tmp_path.glob("*.png"))) == 6
+    assert len(list(tmp_path.glob("*.png"))) == 7
     assert (tmp_path / "results.json").exists()
 
 

@@ -56,11 +56,11 @@
     }
   },
   "worst_95_coverage_under_misspecification": 34.0,
-  "pfb_cpu_s_per_s": 0.176,
-  "node_cpu_s_per_s": 0.225,
+  "pfb_cpu_s_per_s": 0.204,
+  "node_cpu_s_per_s": 0.258,
   "node_cpu_s_per_s_range": [
-    0.218,
-    0.262
+    0.252,
+    0.327
   ],
   "benchmark_runs": 5,
   "v0_cpu_s_per_s": 6.9

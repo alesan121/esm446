@@ -68,6 +68,15 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import optimize
 
+#: How far above its own held estimate a bin may sit and still count towards the frame's
+#: noise level. Eight is about 9 dB: comfortably above what noise reaches at these false alarm
+#: rates, comfortably below the tens of decibels a real emission stands at.
+_LEVEL_EXCLUSION_FACTOR = 8.0
+
+#: Guards the level ratio against a division by zero on an all-zero frame, which a file
+#: source can produce at the end of a capture.
+_TINY = 1e-300
+
 
 @dataclass(frozen=True)
 class CfarConfig:
@@ -97,6 +106,10 @@ class CfarConfig:
         os_rank_fraction: For OS-CFAR, which order statistic to use as a fraction of
             ``num_reference``. 0.75 is the usual robust choice: high enough to be a good
             noise estimate, low enough to reject a few interferers.
+        track_level: Whether to correct the held noise estimate to each frame's own noise
+            level. On synthetic noise this changes nothing, because synthetic noise is
+            stationary; on real receiver noise it is worth a factor of 64 in false alarm
+            rate. Off only to reproduce the behaviour that made the defect visible.
         detect_pairs: Whether to run a second test on the sum of each adjacent bin pair,
             which recovers about 2 dB for an emitter sitting between two bins. The false
             alarm budget is split between the two tests, so the design ``pfa`` still bounds
@@ -124,6 +137,7 @@ class CfarConfig:
     method: str = "os"
     os_rank_fraction: float = 0.75
     update_interval: int = 64
+    track_level: bool = True
     detect_pairs: bool = False
 
     def __post_init__(self) -> None:
@@ -340,9 +354,23 @@ class CfarDetector:
     def noise_estimate(self, power: np.ndarray) -> np.ndarray:
         """Estimate noise power local to each bin, excluding the cell under test and guards.
 
-        For a block of frames the estimate is recomputed every ``update_interval`` frames
-        and held in between. See `CfarConfig.update_interval` for why that is sound and
-        what it costs to do otherwise.
+        The estimate is separated into a shape and a level, because the two change on
+        different timescales and only one of them is expensive.
+
+        The **shape** across bins is set by the analogue filters and the channeliser, and it
+        does not move: it is computed every ``update_interval`` frames and held in between.
+        The **level** moves with receiver gain and local-oscillator behaviour on a timescale
+        far shorter than that hold, and it is recomputed for every frame by
+        `_level_correction`, which costs almost nothing.
+
+        Holding both was the original design and it is why the node reported eight
+        twenty-second emissions on the first ambient capture ever put through it. Measured on
+        receiver noise, holding the level for 64 frames gives a false alarm rate of
+        3.3e-3 against a 1e-8 design point; tracking it per frame gives 5.2e-5, a
+        sixty-fourfold improvement, for 0.03 CPU-seconds per signal second.
+
+        None of this appears on synthetic noise, which is stationary by construction: there
+        the two are indistinguishable and the test suite measured them as such for months.
 
         Args:
             power: Per-bin power, shape ``(bins,)`` or ``(frames, bins)``.
@@ -354,8 +382,59 @@ class CfarDetector:
         if power.ndim > 1 and interval > 1 and power.shape[0] > interval:
             frames = power.shape[0]
             sampled = self._noise_estimate_exact(power[::interval])
-            return np.repeat(sampled, interval, axis=0)[:frames]
+            held = np.repeat(sampled, interval, axis=0)[:frames]
+            if self.config.track_level:
+                levels = self._frame_levels(power, held)
+                # Each frame is compared against the level of the frame its estimate was
+                # built from, not against the estimate itself. That matters: the estimate is
+                # an order statistic and sits about 1.4 dB above the mean it is derived from,
+                # so dividing by it would bias every threshold down by that much. Comparing
+                # like with like makes the correction exactly 1.0 on stationary noise.
+                anchors = np.repeat(levels[::interval], interval)[:frames]
+                held = held * (levels / np.maximum(anchors, _TINY))[:, None]
+            return held
         return self._noise_estimate_exact(power)
+
+    def _frame_levels(self, power: np.ndarray, held: np.ndarray) -> np.ndarray:
+        """Noise level of each frame, in the units of the power itself.
+
+        The ratio of the current mean bin power to the held one, taken over the bins that are
+        **not** carrying a signal. Robustness is the whole difficulty here, and the naive
+        version is a trap worth describing because it was measured and nearly shipped.
+
+        A plain mean over all bins is the cheapest statistic and gave the best false alarm
+        rate of anything tried, 1.9e-5. It also raised the threshold by up to 26 dB whenever a
+        strong emitter was present, because one bin 40 dB above the floor moves the mean of
+        160 bins by a factor of sixty. Measured on the recorded two-emitter capture, detection
+        of the two real carriers fell from 74 % of frames to 13 % and 7 %. It would have
+        traded the system's actual job for a better number on a page.
+
+        Excluding the bins that exceed their own held estimate by more than
+        `_LEVEL_EXCLUSION_FACTOR` fixes that: the emitters exclude themselves, the correction
+        stays within a factor of three, and detection of the two carriers is bit-for-bit what
+        it was without any correction at all.
+
+        A median would also be robust, and was measured: it costs three times as much and
+        gives a worse false alarm rate, 4.0e-4 against 5.2e-5. The mean is the better estimator
+        of a mean, which is what a power level is.
+
+        Args:
+            power: Per-bin power, shape ``(frames, bins)``.
+            held: The held estimate, used only to decide which bins are carrying signal.
+
+        Returns:
+            Mean quiet-bin power per frame, shape ``(frames,)``.
+        """
+        quiet = power < held * _LEVEL_EXCLUSION_FACTOR
+        counted = quiet.sum(axis=1)
+        # Every bin occupied at once is possible in principle and must not divide by zero.
+        # Falling back to the plain mean there is the least wrong option available, and it
+        # cannot desensitise anything that is not already fully occupied.
+        return np.where(
+            counted > 0,
+            (power * quiet).sum(axis=1) / np.maximum(counted, 1),
+            power.mean(axis=1),
+        )
 
     def _noise_estimate_exact(self, power: np.ndarray) -> np.ndarray:
         """Estimate the noise floor for every frame given, with no time decimation."""

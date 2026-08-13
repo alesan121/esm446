@@ -15,7 +15,7 @@ which runs the real channeliser, detector and estimator and writes the underlyin
 `figures/results.json`. Nothing here is drawn by hand, and the report's tables and its plots
 are read from the same file so they cannot disagree.
 
-**Summary:** 45 requirements. **42 MET**, **2 PARTIAL**, **1 BLOCKED**. The blocker is a
+**Summary:** 45 requirements. **41 MET**, **3 PARTIAL**, **1 BLOCKED**. The blocker is a
 calibrated power source; every consequence of not having one is traced below rather than
 absorbed.
 
@@ -86,8 +86,48 @@ likely to already know about.
 
 | Requirement | Result |
 |---|---|
-| REQ-FUN-003 — P<sub>fa</sub> independent of noise level | **MET.** Design 1e-3; measured 0.90e-3 to 1.12e-3 across noise levels spanning **nine orders of magnitude** |
-| REQ-PER-005 — holding the noise estimate does not move the rate | **MET.** Verified at update intervals 1, 64 and 256 |
+| REQ-FUN-003 — P<sub>fa</sub> independent of noise level | **PARTIAL** — see below |
+| REQ-PER-005 — holding the noise estimate does not move the rate | **MET** on synthetic noise, at update intervals 1, 64 and 256 |
+
+On synthetic noise the design point is met exactly: 0.90e-3 to 1.12e-3 against a 1e-3 design,
+across noise levels spanning **nine orders of magnitude**.
+
+### On real noise, and why this is PARTIAL
+
+The first ambient capture ever put through the node produced **eight emissions of twenty
+seconds each on an empty band**, at signal-to-noise ratios of about zero decibels. Nothing was
+transmitting.
+
+The cause was not the threshold. It was the noise *estimate*: the whole estimate was held for
+64 frames, and while the shape across bins really is static, the **level** moves with the
+receiver on a far shorter timescale. When it drifted, every bin crossed at once — 44 % of all
+crossings arrived in frames with ten or more bins crossing together, and the tracker's
+quarter-second hangover then glued them into emissions.
+
+Measured, with the DC bin excluded exactly as the node excludes it:
+
+| capture | held level | level tracked per frame |
+|---|---|---|
+| Receiver only, antenna disconnected | **no crossing in 4.4 M cells** | no crossing |
+| Real band, configured gain (VGA 20) | 3.6e-5 | **2.5e-7** |
+| Real band, high gain (VGA 40) | 3.3e-3 | **8.3e-6** |
+
+Separating the estimate into a held shape and a per-frame level costs **0.03 CPU-seconds per
+signal second** and removes the broadband bursts entirely. The node now reports nothing at all
+on the capture that produced eight phantoms, and detection of the two real emitters in the
+recorded vectors is bit-for-bit unchanged at 74.7 % and 74.1 % of frames.
+
+**It is PARTIAL because 2.5e-7 is not 1e-8.** The residual is the environment: real receiver
+noise is neither Gaussian nor stationary, and a threshold derived from an exponential
+assumption cannot deliver an exponential tail probability against it. The design point is met
+where the assumption holds, and the gap where it does not is now measured rather than assumed.
+
+**One near miss worth recording.** The cheapest level statistic, a plain mean over all bins,
+gave the best false alarm rate of anything tried — and raised the threshold by up to 26 dB
+whenever a strong emitter was present, because one bin 40 dB above the floor moves the mean of
+160 bins by a factor of sixty. On the recorded two-emitter capture it cut detection of the two
+real carriers from 74 % of frames to 13 % and 7 %. No synthetic test would have caught it. It
+was caught by running the candidate against the hardware vectors, which is why they exist.
 
 This is the property v0's fixed thresholds could not have had. `MIN_POWER = 0.065` encoded one
 antenna, one gain setting and one afternoon's noise floor; moved anywhere else it either went
@@ -285,13 +325,13 @@ win; the real captures said no, and the real captures decided it.
 
 | Category | Requirements | MET | PARTIAL | BLOCKED |
 |---|---|---|---|---|
-| Functional (REQ-FUN) | 17 | 17 | — | — |
+| Functional (REQ-FUN) | 17 | 16 | 1 | — |
 | Performance (REQ-PER) | 5 | 5 | — | — |
 | Interface (REQ-IF) | 9 | 9 | — | — |
 | Calibration (REQ-CAL) | 6 | 3 | 2 | 1 |
 | Legal and ethical (REQ-LEG) | 5 | 5 | — | — |
 | Configuration (REQ-CFG) | 3 | 3 | — | — |
-| **Total** | **45** | **42** | **2** | **1** |
+| **Total** | **45** | **41** | **3** | **1** |
 
 No requirement is orphaned: every one names a verifying test or states its blocker, and
 `tests/test_requirements.py` fails the build if that stops being true.

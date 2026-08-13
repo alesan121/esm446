@@ -1,0 +1,14 @@
+{
+  "note": "Receiver noise only: the antenna was disconnected, so this capture contains no external signal of any kind. It exists so the false alarm rate can be checked against real receiver noise rather than only against synthetic Gaussian noise.",
+  "centre_hz": 446593750.0,
+  "sample_rate_hz": 2000000.0,
+  "num_channels": 160,
+  "duration_s": 1.1,
+  "format": "cs8",
+  "gains": {
+    "lna_db": 32.0,
+    "vga_db": 20.0,
+    "amp_enabled": false
+  },
+  "antenna": "disconnected (open SMA)"
+}

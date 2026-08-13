@@ -18,7 +18,7 @@ below runs on a clone with nothing plugged in.
 
 ```bash
 poetry install --with dev
-poetry run pytest                    # 322 tests
+poetry run pytest                    # 348 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```

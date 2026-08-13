@@ -59,6 +59,18 @@ fprintf('\nBoth satisfy grid alignment. Only one keeps the receiver''s own artef
 fprintf('of the allocation, and that is the constraint the first choice missed.\n');
 
 % ---------------------------------------------------------------------------------------
+% 4. What a range estimate from one sensor is actually worth
+% ---------------------------------------------------------------------------------------
+fprintf('\n\n--- 4. Range from received power, with its real uncertainty ---\n');
+
+geo = geolocation_monte_carlo('received_dbm', -95);
+
+fprintf('The interval spans a factor of %.0f. Most of that is the path loss exponent,\n', ...
+        geo.p95_m / geo.p05_m);
+fprintf('not the receiver: narrowing the calibration would buy almost nothing while the\n');
+fprintf('exponent is an assumption rather than a measurement.\n');
+
+% ---------------------------------------------------------------------------------------
 % Summary
 % ---------------------------------------------------------------------------------------
 fprintf('\n\n=== Summary ===\n\n');
@@ -79,4 +91,6 @@ if isnan(shipped.dc_channel)
 else
     fprintf('offset-tuned centre          REJECTED\n');
 end
+fprintf('range estimate at -95 dBm    %6.0f m, 5-95%% ring %.0f to %.0f m\n', ...
+        geo.median_m, geo.p05_m, geo.p95_m);
 fprintf('\n');

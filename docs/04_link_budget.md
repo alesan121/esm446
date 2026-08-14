@@ -195,6 +195,49 @@ that can be believed. The figure is quoted here rather than buried because the t
 deployment decision, not a constant: a quieter site, or a narrower capture that excludes the
 band edges where most of those phantoms sat, moves the balance.
 
+## Measured: the receiver's frequency error
+
+Every frequency this system reports inherits the error of the HackRF's crystal. Consistency
+between captures says the oscillator is stable and says nothing about whether it is right.
+
+Measured against the unused centre subcarrier of two LTE band 20 downlink carriers, which are
+transmitted by base stations held to 0.05 ppm:
+
+| carrier | local oscillators | measured error |
+|---|---|---|
+| 816.000 MHz | 8 | **-0.238 +/- 0.031 ppm** |
+| 806.000 MHz | 6 | **-0.240 +/- 0.028 ppm** |
+
+The uncertainty on each is the scatter between its own local oscillators. The two carriers
+are independent transmitters and they agree to 0.002 ppm against a combined uncertainty of
+0.042, which is the check that matters: a bias in the method would not cancel between two
+carriers ten megahertz apart, so agreement at this level bounds one.
+
+**Result: -0.24 +/- 0.02 ppm, or -107 +/- 9 Hz at 446.09375 MHz.**
+
+How much of each capture is averaged is not a free choice, and getting it wrong is what an
+earlier version of this table did. A single capture's estimate carries a few hundred hertz of
+random error; averaging a fifth of a second leaves enough of it that the two carriers appeared
+to disagree by 0.055 ppm, which was read as a systematic that was not there. Averaging the
+full 1.6 seconds each capture holds shrinks the scatter as the square root of the count --
+64 to 26 Hz over a sixteenfold increase -- and the disagreement disappears.
+
+That is far better than the several parts per million a HackRF's specification permits, and it
+is small enough that it does not disturb emitter grouping: the tolerance there is 3 kHz, more
+than twenty times the error.
+
+The measurement is one command per carrier, and the captures are not in the repository
+because each is 160 MB:
+
+```
+esm446-calibrate-frequency lte_*.cs8 n_*.cs8 m_*.cs8 \
+    --centre 813.5e6 816e6 818.5e6 814e6 817.5e6 814.5e6 817e6 818e6 \
+    --rate 20e6 --nominal 816e6 --samples 32000000
+```
+
+The method, and the three false starts that preceded it, are documented in
+`esm446/core/frequency.py`.
+
 ## What remains unmeasured
 
 - **Absolute power.** Blocked on [#41](https://github.com/alesan121/esm446/issues/41).
@@ -202,7 +245,8 @@ band edges where most of those phantoms sat, moves the balance.
   because those figures are not physical at this frequency — see `esm446/core/antenna.py`.
   Gain by substitution against a quarter-wave reference needs no extra equipment and has not
   been done.
-- **Frequency accuracy.** Reported frequencies are consistent to within tens of hertz across
+- **Frequency accuracy.** *(measured -- see below)*
+- **Superseded:** Reported frequencies are consistent to within tens of hertz across
   captures, but nothing has established that they are *correct*. The HackRF's crystal drifts
   by several parts per million, which at 446 MHz is hundreds of hertz of systematic error.
   Calibrating against a broadcast carrier would settle it.

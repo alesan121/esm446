@@ -7,24 +7,66 @@ nothing at all about whether it is *right*: a crystal several parts per million 
 and wrong, and at 446 MHz a few parts per million is a few hundred hertz — comparable to the
 whole spread the emitter-grouping tolerance is built around.
 
-Why a DVB-T multiplex is the reference
---------------------------------------
+Why an LTE carrier's unused centre subcarrier is the reference
+--------------------------------------------------------------
+The measurement that succeeded uses neither of the methods this module was first written
+around, and the route to it is worth recording because every step eliminated something.
+
+An LTE downlink does not transmit its DC subcarrier. That leaves a notch about 15 kHz wide at
+**exactly** the carrier centre, and the carrier centre is on a 100 kHz raster set by the
+operator's licence. The notch is a *local* feature, so unlike a band edge it cannot be pulled
+about by a neighbouring carrier -- which matters, because band 20 carries two adjacent
+10 MHz blocks whose skirts overlap where a band edge would be looked for.
+
+Base stations hold frequency to 0.05 ppm, forty times tighter than the error being measured,
+so the notch is a reference and not a guess.
+
+**The estimator has to be immune to spectral tilt, and the obvious one is not.** Taking the
+centroid of the power deficit across the notch was measured against a synthetic notch under
+known tilt: one decibel of slope across a 40 kHz window moves the answer by 1638 Hz, which at
+816 MHz is two parts per million -- five times the quantity being measured. Two real carriers
+measured that way disagreed by 1.0 ppm against a combined uncertainty of 0.29, which is how
+the bias was found.
+
+Removing a straight line fitted to the notch's flanks, in decibels, before taking the centroid
+reduces the tilt sensitivity from 4460 Hz to 5 Hz across the same range. The two carriers then
+agree to 0.002 ppm against a combined uncertainty of 0.042.
+
+**Average the whole capture, not a slice of it.** A single capture's notch centre carries a
+few hundred hertz of random error -- measured at -452, -249 and -173 Hz on one capture from a
+fifth, four fifths and the whole of its length. Averaging too little leaves enough of that in
+the ensemble mean to look like a disagreement between carriers, which is exactly how an
+earlier version of this measurement invented a systematic that was not there. The scatter
+falls as the square root of the samples averaged, as it should.
+
+Why the other candidates were eliminated
+----------------------------------------
 The measurement needs a transmitter whose frequency is known better than the receiver's. The
 options available without buying anything are poor except this one:
 
+- A GSM carrier's FCCH burst is a pure tone at exactly Rb/4 = 67 708.33 Hz above the carrier,
+  and a tone is the ideal thing to measure: a phase-slope estimator recovers it exactly in the
+  absence of noise, and to 0.38 Hz when fifty bursts are averaged at 20 dB. It was abandoned
+  because the estimator collapses below about 10 dB of burst SNR -- phase unwrapping slips
+  cycles, and at 5 dB the error is 1.4 kHz -- and no GSM carrier receivable here reached that.
 - An FM broadcast carrier is frequency-modulated, so there is no discrete carrier to measure;
   only its long-term average is the nominal frequency, and programme material is not
   symmetric enough to average out to the accuracy needed.
 - The project's own handsets are crystals of unknown error. Calibrating one uncalibrated
   oscillator against another measures nothing.
-- A terrestrial television multiplex is transmitted from a single-frequency network, which
-  can only work if every transmitter in it is locked to a common reference — in practice GPS.
-  Its spectrum is an OFDM block: flat-topped, steep-edged and symmetric by construction, so
-  its centre can be found from the shape alone without demodulating anything.
+- A terrestrial television multiplex is locked to a common reference across its
+  single-frequency network, and its OFDM block is flat-topped and symmetric enough that a
+  centre can be found from its two band edges alone. This is what :func:`measure_centre` and
+  :func:`measure_frequency_error` implement, and it is kept because it needs no cellular
+  coverage. It is not what produced the published figure: no multiplex was receivable at
+  adequate strength on the antenna available here, and the width guard correctly refused to
+  measure what was captured rather than returning a number from noise.
 
-The centre is estimated from the two band edges rather than from a peak, because an OFDM
-block has no peak. Averaging the spectrum over a second reduces the fading that would
-otherwise move each edge independently.
+Which function to use
+---------------------
+:func:`measure_notch_error` is the one to reach for, and the one the CLI defaults to.
+:func:`measure_frequency_error` remains for the television method where cellular coverage is
+absent.
 
 What this does not do
 ---------------------
@@ -37,6 +79,7 @@ an argument about the transmitter's engineering rather than a measurement of it.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,6 +110,11 @@ DVBT_OCCUPIED_HZ = 7_610_000
 #: reference achieves and far narrower than the 31 % noise produced.
 OCCUPIED_TOLERANCE = 0.15
 
+#: LTE carriers are placed on a 100 kHz raster, so a measured centre can be snapped to its
+#: licensed value without knowing the band or the operator. The receiver's error is around a
+#: tenth of a kilohertz, a thousand times finer than the step, so the snap is unambiguous.
+LTE_RASTER_HZ = 100_000.0
+
 
 @dataclass(frozen=True)
 class FrequencyError:
@@ -79,9 +127,10 @@ class FrequencyError:
             appear higher than they are.
         ppm: The same error as parts per million, which is the figure that transfers to any
             other frequency.
-        confidence_hz: Half the disagreement between the two band edges, which is the
-            sharpest available check on the estimate: a symmetric signal measured cleanly
-            gives the same centre from either side.
+        confidence_hz: How far the estimate can be out, by whatever check the method
+            supports. What that check is differs between methods, so ``basis`` names it
+            rather than leaving the reader to assume.
+        basis: What ``confidence_hz`` was derived from, for the report.
     """
 
     measured_hz: float
@@ -89,6 +138,7 @@ class FrequencyError:
     offset_hz: float
     ppm: float
     confidence_hz: float
+    basis: str = "edge agreement"
 
     def error_at(self, frequency_hz: float) -> float:
         """The error this implies at another frequency, in hertz.
@@ -107,7 +157,7 @@ class FrequencyError:
             f"reference at {self.nominal_hz / 1e6:.3f} MHz measured at "
             f"{self.measured_hz / 1e6:.6f} MHz\n"
             f"  offset      {self.offset_hz:+.0f} Hz  ({self.ppm:+.2f} ppm)\n"
-            f"  edge agreement +/-{self.confidence_hz:.0f} Hz\n"
+            f"  {self.basis} +/-{self.confidence_hz:.0f} Hz\n"
             f"  implied error at 446.09375 MHz: {self.error_at(446_093_750.0):+.0f} Hz"
         )
 
@@ -236,6 +286,177 @@ def measure_centre(
         )
 
     return 0.5 * (low + high), 0.5 * occupied
+
+
+def measure_notch_centre(
+    iq: np.ndarray,
+    sample_rate: float,
+    centre_hz: float,
+    nominal_hz: float,
+    half_window_hz: float = 20_000.0,
+    minimum_width_hz: float = 5_000.0,
+) -> float:
+    """Locate an LTE carrier's unused centre subcarrier, in hertz.
+
+    The notch sits at exactly the carrier frequency and is a local feature, so a neighbouring
+    carrier cannot move it the way it moves a band edge.
+
+    A straight line fitted to the notch's flanks is removed in decibels before the centroid is
+    taken. That step is not tidiness: measured against a synthetic notch, one decibel of tilt
+    across the window moves an undetrended centroid by 1638 Hz, and detrending reduces the same
+    case to 5 Hz. Without it, two real carriers disagreed by 1.0 ppm.
+
+    Args:
+        iq: Complex baseband containing the carrier.
+        sample_rate: Its sample rate.
+        centre_hz: Where the receiver was tuned. Must not equal ``nominal_hz``, or the
+            receiver's own local-oscillator leakage lands on the notch being measured.
+        nominal_hz: The carrier's licensed centre, on the 100 kHz raster.
+        half_window_hz: Half-width of the window fitted. Twenty kilohertz is wide enough for
+            the flanks and narrow enough that the receiver's own response is straight across
+            it.
+        minimum_width_hz: How wide the depression must be to count as a carrier centre.
+
+            Width rather than depth, and the reason is the opposite of the intuition: on real
+            captures the notch is 11 to 12 dB deep, while pure noise reaches 23 to 24 dB
+            below its own fitted line, because a single noise bin can be very low while a
+            notch is a smooth broad feature. Depth therefore fails as a test and fails in the
+            dangerous direction -- it accepts noise and would reject the signal.
+
+            Measured, the contiguous run more than 3 dB below the fitted line is 13.6 to
+            14.6 kHz on the two real carriers, matching LTE's 15 kHz subcarrier, and 0.31 kHz
+            on noise. Five kilohertz sits an order of magnitude from each.
+
+    Returns:
+        Measured notch position minus ``nominal_hz``, in hertz.
+
+    Raises:
+        ValueError: If no notch of the required depth is present, which is what an empty band
+            or a mistuned capture looks like.
+    """
+    frequencies, power = average_spectrum(iq, sample_rate, centre_hz, fft_size=1 << 18)
+    selected = np.abs(frequencies - nominal_hz) < half_window_hz
+    if selected.sum() < 50:
+        raise ValueError("the capture does not span the carrier's centre")
+
+    offsets = frequencies[selected] - nominal_hz
+    with np.errstate(divide="ignore"):
+        decibels = 10.0 * np.log10(np.maximum(power[selected], 1e-30))
+    decibels = np.convolve(decibels, np.ones(9) / 9.0, mode="same")
+
+    # The line is fitted to the flanks only: including the notch would let it tilt the fit.
+    flanks = np.abs(offsets) > half_window_hz / 2.0
+    flattened = decibels - np.polyval(np.polyfit(offsets[flanks], decibels[flanks], 1), offsets)
+
+    resolution = sample_rate / (1 << 18)
+    below = flattened < -3.0
+    longest = run = 0
+    for is_below in below:
+        run = run + 1 if is_below else 0
+        longest = max(longest, run)
+    width = longest * resolution
+    if width < minimum_width_hz:
+        raise ValueError(
+            f"no carrier centre here: the widest depression is {width / 1e3:.1f} kHz across "
+            f"and {minimum_width_hz / 1e3:.0f} kHz is required. Noise produces deep but "
+            f"narrow dips; a carrier's unused centre subcarrier is broad and smooth."
+        )
+
+    deficit = np.maximum(-flattened, 0.0)
+    total = deficit.sum()
+    if total <= 0.0:
+        raise ValueError("nothing dips below the fitted line; there is no notch here")
+    return float((offsets * deficit).sum() / total)
+
+
+def nearest_carrier(frequency_hz: float, raster_hz: float = LTE_RASTER_HZ) -> float:
+    """Snap a measured frequency onto the licensed channel raster.
+
+    A cellular carrier's centre is not arbitrary: it sits on a raster fixed by the standard,
+    100 kHz for LTE. Snapping to it recovers the nominal frequency without needing to know
+    which operator or band the carrier belongs to, and it is safe here because the receiver's
+    error is three orders of magnitude smaller than the raster step.
+
+    Args:
+        frequency_hz: The measured carrier centre.
+        raster_hz: Raster step. Defaults to LTE's 100 kHz.
+
+    Returns:
+        The nominal carrier centre.
+    """
+    return round(frequency_hz / raster_hz) * raster_hz
+
+
+def measure_notch_error(
+    captures: Iterable[tuple[np.ndarray, float]],
+    sample_rate: float,
+    nominal_hz: float,
+) -> FrequencyError:
+    """Measure the receiver's frequency error against a cellular carrier's unused centre.
+
+    This is the method that produced the figure in ``docs/04_link_budget.md``, and the one to
+    reach for. It needs no equipment beyond an antenna: a base station's frequency is
+    disciplined to 0.05 ppm, two orders of magnitude better than the receiver being measured,
+    so it serves as a reference wherever there is coverage.
+
+    Every capture should be taken at a *different* local oscillator. That is not a refinement,
+    it is the control: the receiver's own artefacts sit at fixed baseband offsets and would
+    otherwise be indistinguishable from the carrier, whereas a real emission stays put in
+    absolute frequency while the local oscillator moves under it. Retuning between captures
+    both proves the signal is external and averages down whatever depends on where in the
+    passband the notch happened to land.
+
+    Args:
+        captures: Pairs of complex baseband and the frequency each was tuned to. Consumed
+            lazily and one at a time, so a generator that opens each capture as it is reached
+            keeps only one in memory; a full set of wideband captures does not fit otherwise.
+        sample_rate: Sample rate shared by the captures.
+        nominal_hz: The carrier's licensed centre. This is required rather than inferred:
+            picking the strongest bin and snapping it to the raster looks like it would work
+            and does not, because an OFDM carrier is flat across its occupied bandwidth and
+            its strongest bin falls at random within several megahertz. Take the carrier from
+            a survey and pass it, or snap a value with :func:`nearest_carrier`.
+
+    Returns:
+        The measured error, with the scatter across captures as its confidence.
+
+    Raises:
+        ValueError: If no capture is given, or none contains a measurable notch.
+    """
+    seen = 0
+    offsets: list[float] = []
+    for iq, centre_hz in captures:
+        seen += 1
+        try:
+            offsets.append(measure_notch_centre(iq, sample_rate, centre_hz, nominal_hz))
+        except ValueError as problem:
+            logger.warning("frequency: skipping a capture, %s", problem)
+
+    if not seen:
+        raise ValueError("no captures given")
+
+    if not offsets:
+        raise ValueError(
+            "no capture contained a measurable notch. The carrier must be strong enough for "
+            "its unused centre subcarrier to show against the noise"
+        )
+
+    offset = float(np.mean(offsets))
+    # The scatter between local oscillators bounds what the method has not removed, and it is
+    # consistently larger than the error of any single capture. Quoting the smaller number
+    # would be quoting precision in place of accuracy.
+    spread = float(np.std(offsets, ddof=1) / np.sqrt(len(offsets))) if len(offsets) > 1 else 0.0
+
+    error = FrequencyError(
+        measured_hz=nominal_hz + offset,
+        nominal_hz=nominal_hz,
+        offset_hz=offset,
+        ppm=1e6 * offset / nominal_hz,
+        confidence_hz=spread,
+        basis=f"scatter over {len(offsets)} local oscillators",
+    )
+    logger.info("frequency: %+.0f Hz (%+.3f ppm)", error.offset_hz, error.ppm)
+    return error
 
 
 def measure_frequency_error(

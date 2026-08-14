@@ -15,7 +15,7 @@ which runs the real channeliser, detector and estimator and writes the underlyin
 `figures/results.json`. Nothing here is drawn by hand, and the report's tables and its plots
 are read from the same file so they cannot disagree.
 
-**Summary:** 45 requirements. **41 MET**, **3 PARTIAL**, **1 BLOCKED**. The blocker is a
+**Summary:** 45 requirements. **42 MET**, **2 PARTIAL**, **1 BLOCKED**. The blocker is a
 calibrated power source; every consequence of not having one is traced below rather than
 absorbed.
 
@@ -300,38 +300,40 @@ sentinel, `estimate_from_report` returns `None`, and the link budget's predicted
 figures are labelled as computed from datasheet values for a device that has not been
 characterised. See [#41](https://github.com/alesan121/esm446/issues/41).
 
-**REQ-CAL-006 — frequency accuracy. PARTIAL, and the attempt is worth reporting.** Reported
-frequencies are consistent to within tens of hertz across captures, but nothing establishes
-that they are *correct*. A crystal several parts per million out is stable and wrong, and at
-446 MHz a few parts per million is a few hundred hertz — comparable to the whole spread the
-emitter grouping is built around.
+**REQ-CAL-006 — frequency accuracy. MET, and the route to it is the report.** Measured
+against the unused centre subcarrier of two LTE band 20 downlink carriers, whose base stations
+are held to 0.05 ppm: **-0.24 +/- 0.02 ppm**, which is -107 +/- 9 Hz at 446 MHz. Two
+independent carriers ten megahertz apart agree to 0.002 ppm against a combined uncertainty of
+0.042, which bounds any bias in the method: a bias would not cancel between them.
 
-The measurement is implemented, tested against synthetic references of known frequency, and
-available as `esm446-calibrate-frequency`. It was not possible to take:
+Three methods were tried and two were eliminated by measurement rather than by opinion.
 
-- A terrestrial television multiplex is the right reference, because a single-frequency
-  network cannot function unless every transmitter in it is locked to a common source. A scan
-  of ten channels across 474–690 MHz found every one of them within 2 dB of the others, which
-  is the receiver's own noise: nothing was receivable. The antenna is a quarter-wave whip cut
-  for 446 MHz, used indoors.
-- The same scan across the LTE downlink bands, 796–2160 MHz, found the same.
-- FM broadcast *is* receivable — 38 dB of structure at 98 MHz — and is not usable. The signal
-  is frequency-modulated, so there is no discrete carrier, and the regulated tolerance on a
-  broadcast carrier is wider than the error being looked for.
-- The project's own handsets are crystals of unknown error. Calibrating one uncalibrated
-  oscillator against another measures nothing.
+A GSM FCCH burst is a pure tone at exactly 67 708.33 Hz above its carrier, and a phase-slope
+estimator recovers it to 0.38 Hz when fifty bursts are averaged at 20 dB. It was abandoned
+because the same test showed the estimator collapsing below about 10 dB of burst SNR -- phase
+unwrapping slips cycles and the error reaches 1.4 kHz at 5 dB -- and no GSM carrier receivable
+here was strong enough.
 
-So the honest position is that the tool exists and the reference does not. The wideband
-antenna in the same equipment list, 700–2700 MHz, would very likely receive the LTE downlink
-that the whip could not, which makes this a one-command measurement rather than an open
-problem.
+A band-edge midpoint was tried next and is unusable in this band, because band 20 carries two
+adjacent 10 MHz blocks whose skirts overlap where the lower edge has to be found. It put the
+carrier centre 96 kHz from any raster point.
 
-The tool refuses rather than answers when no reference is present, and that guard is a
-statement about shape rather than level: measured on a 10 MHz capture a real multiplex returns
-7.607 MHz of occupied bandwidth against an expected 7.610, while pure noise returns 9.994 MHz —
-the whole span, because the edge finder walked to the ends of the capture without finding an
-edge. Levels do not separate the two cases at all; on an 8 MHz capture of an 8 MHz channel the
-peak stands about a decibel above the median either way.
+The DC subcarrier notch works because it is a local feature no neighbour can move. But the
+obvious estimator for it does not: taking the centroid of the power deficit is so sensitive to
+spectral tilt that one decibel across the measurement window moves the answer 1638 Hz, two
+parts per million. That was not deduced -- it was found because two real carriers disagreed by
+1.0 ppm against a combined uncertainty of 0.29, and then reproduced against a synthetic notch
+under known tilt. Removing a straight line fitted to the notch's own flanks reduces the tilt
+sensitivity from 4460 Hz to 5 Hz, and the two carriers then agree.
+
+One further trap is recorded because it inverts the intuition. The guard against measuring an
+empty band was first written as a minimum notch depth, and depth fails in the dangerous
+direction: pure noise reaches 23 to 24 dB below its own fitted line while the real carriers
+measure 11 to 12, because a single noise bin can be very low while a notch is broad and
+smooth. A depth test accepts noise and rejects signal. Width separates them by a factor of
+forty -- 13.6 to 14.6 kHz against 0.31 kHz -- and matches LTE's 15 kHz subcarrier, so width is
+what the tool tests.
+
 
 **Specific emitter identification — attempted, and it failed.** The ±37.5 kHz spurious pair
 was the strongest candidate: discrete, repeatable, and a property of the transmitter rather
@@ -358,7 +360,7 @@ win; the real captures said no, and the real captures decided it.
 | Calibration (REQ-CAL) | 6 | 3 | 2 | 1 |
 | Legal and ethical (REQ-LEG) | 5 | 5 | — | — |
 | Configuration (REQ-CFG) | 3 | 3 | — | — |
-| **Total** | **45** | **41** | **3** | **1** |
+| **Total** | **45** | **42** | **2** | **1** |
 
 No requirement is orphaned: every one names a verifying test or states its blocker, and
 `tests/test_requirements.py` fails the build if that stops being true.

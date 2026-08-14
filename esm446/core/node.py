@@ -118,7 +118,7 @@ class EsmNode:
         expected_ctcss_hz: float | None = None,
         tracker: EmissionTracker | None = None,
         dc_guard_bins: int = 1,
-        edge_guard_bins: int = 8,
+        edge_guard_bins: int | None = None,
     ) -> None:
         self.config = channelizer_config
         self.centre_frequency = centre_frequency
@@ -131,7 +131,15 @@ class EsmNode:
         self.gains = gains
         self.expected_ctcss_hz = expected_ctcss_hz
         self.dc_guard_bins = dc_guard_bins
-        self.edge_guard_bins = edge_guard_bins
+        # Five per cent of the band either side of Nyquist. Proportional rather than
+        # absolute because the roll-off is a fraction of the sampled bandwidth: eight bins is
+        # 5 % of a 160-channel band and 20 % of a 40-channel one, and the fixed number quietly
+        # ate a fifth of the narrower test vectors before a test caught it.
+        self.edge_guard_bins = (
+            max(1, channelizer_config.num_channels // 20)
+            if edge_guard_bins is None
+            else edge_guard_bins
+        )
         self._bin_frequencies = bands.bin_frequencies(
             centre_frequency, channelizer_config.sample_rate, channelizer_config.num_channels
         )

@@ -109,9 +109,9 @@ Measured, at 2 MS/s over 160 channels, in CPU-seconds per second of signal:
 
 | Stage | Cost | Share |
 |---|---|---|
-| Polyphase filter bank | 0.17 | 75 % |
-| CFAR detection, tracking, identification | 0.06 | 25 % |
-| **Full node pipeline** | **0.23** | **4.4× real time** |
+| Polyphase filter bank | 0.18 | 60 % |
+| CFAR detection, tracking, identification | 0.12 | 40 % |
+| **Full node pipeline** | **0.30** | **3.4× real time** |
 | Wideband survey (separate path) | 0.009 | — |
 
 Each is the median of five runs. One run of this pipeline varies by up to 45 % with machine

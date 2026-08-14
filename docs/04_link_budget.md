@@ -195,48 +195,102 @@ that can be believed. The figure is quoted here rather than buried because the t
 deployment decision, not a constant: a quieter site, or a narrower capture that excludes the
 band edges where most of those phantoms sat, moves the balance.
 
-## Measured: the receiver's frequency error
+## Attempted: the receiver's frequency error, and why it is a bound rather than a figure
 
 Every frequency this system reports inherits the error of the HackRF's crystal. Consistency
 between captures says the oscillator is stable and says nothing about whether it is right.
 
-Measured against the unused centre subcarrier of two LTE band 20 downlink carriers, which are
-transmitted by base stations held to 0.05 ppm:
+An LTE downlink does not transmit its DC subcarrier, leaving a notch about 15 kHz wide at
+exactly the licensed carrier centre, which sits on a 100 kHz raster. Base stations hold
+frequency to 0.05 ppm. That should make a free, accurate reference, and it does not, for
+reasons that took a measurement campaign to establish.
 
-| carrier | local oscillators | measured error |
+**Result: the error is negative and smaller than 1 ppm in magnitude, which is under 450 Hz at
+446 MHz. No tighter figure is claimed.**
+
+### The estimator had a 14 % scale error, found by closed-loop injection
+
+The first implementation took the centroid of the power deficit over a window fixed on the
+nominal frequency. Shifting a real capture by a known amount and re-measuring it recovered
+**86 % of every shift**, on every capture tried:
+
+| injected | recovered | gain |
 |---|---|---|
-| 816.000 MHz | 8 | **-0.238 +/- 0.031 ppm** |
-| 806.000 MHz | 6 | **-0.240 +/- 0.028 ppm** |
+| −2000 Hz | −1700 Hz | 0.850 |
+| −500 Hz | −420 Hz | 0.839 |
+| +500 Hz | +433 Hz | 0.866 |
+| +2000 Hz | +1726 Hz | 0.863 |
 
-The uncertainty on each is the scatter between its own local oscillators. The two carriers
-are independent transmitters and they agree to 0.002 ppm against a combined uncertainty of
-0.042, which is the check that matters: a bias in the method would not cancel between two
-carriers ten megahertz apart, so agreement at this level bounds one.
+A centroid taken over a window fixed on the nominal frequency contracts towards the window
+centre as the notch moves away from it. The unit tests of the day did not catch it because
+their tolerance, 150 Hz on shifts of a few hundred hertz, was wider than the error itself.
 
-**Result: -0.24 +/- 0.02 ppm, or -107 +/- 9 Hz at 446.09375 MHz.**
+The replacement estimates the notch's **axis of symmetry** — the offset at which the profile
+best matches its own mirror image. That has unity gain by construction, and measured the same
+way its worst error is 8.7 Hz over ±3 kHz, a gain error of 0.29 %.
 
-How much of each capture is averaged is not a free choice, and getting it wrong is what an
-earlier version of this table did. A single capture's estimate carries a few hundred hertz of
-random error; averaging a fifth of a second leaves enough of it that the two carriers appeared
-to disagree by 0.055 ppm, which was read as a systematic that was not there. Averaging the
-full 1.6 seconds each capture holds shrinks the scatter as the square root of the count --
-64 to 26 Hz over a sixteenfold increase -- and the disagreement disappears.
+### One capture was contaminated by the receiver's own local oscillator
 
-That is far better than the several parts per million a HackRF's specification permits, and it
-is small enough that it does not disturb emitter grouping: the tolerance there is 3 kHz, more
-than twenty times the error.
+A capture tuned onto the carrier read **−14 Hz** where six other local oscillators on the same
+carrier read −109 to −367 Hz. The local-oscillator spur sits at baseband zero, lands inside
+the notch, and pulls the estimate towards it. That biases the receiver towards looking better
+calibrated than it is, so it would never announce itself as an outlier. The tool now refuses
+any capture tuned within 200 kHz of the carrier.
 
-The measurement is one command per carrier, and the captures are not in the repository
-because each is 160 MB:
+### Four references, and they do not agree
 
-```
-esm446-calibrate-frequency lte_*.cs8 n_*.cs8 m_*.cs8 \
-    --centre 813.5e6 816e6 818.5e6 814e6 817.5e6 814.5e6 817e6 818e6 \
-    --rate 20e6 --nominal 816e6 --samples 32000000
-```
+Six local oscillators per carrier, four carriers spanning a factor of 2.3 in frequency. A
+crystal error is a constant in parts per million, so all four must agree:
 
-The method, and the three false starts that preceded it, are documented in
-`esm446/core/frequency.py`.
+| carrier | band | measured |
+|---|---|---|
+| 806.0 MHz | 20 | −0.351 ± 0.009 ppm |
+| 816.0 MHz | 20 | −0.624 ± 0.049 ppm |
+| 940.0 MHz | 8 | −0.168 ± 0.033 ppm |
+| 1835.1 MHz | 3 | −0.410 ± 0.008 ppm |
+
+χ²/dof = **30**. They disagree by a factor of 3.7, an order of magnitude beyond their own
+scatter. The transmitters cannot explain it: 0.05 ppm at 816 MHz is 0.04 Hz.
+
+### What is actually limiting it
+
+Repeating the measurement on one carrier at a **fixed** local oscillator, ten captures over
+two minutes, separates the receiver from the reference:
+
+| carrier | scatter over 10 repeats |
+|---|---|
+| 806.0 MHz | 24 Hz (0.030 ppm) |
+| 816.0 MHz | 64 Hz (0.078 ppm) |
+| 940.0 MHz | 130 Hz (0.138 ppm) |
+| 1835.1 MHz | 93 Hz (0.051 ppm) |
+
+Nothing about the receiver changed between those captures. What changed is the traffic on the
+subcarriers either side of the notch, which is what the symmetry estimate is comparing. The
+notch is a gap in a live, loaded signal, not a marker on a quiet one.
+
+Screening the references on that basis — a reference is usable only if its own repeats agree
+to better than 0.05 ppm, a criterion about the reference and not about whether it agrees with
+the others — **rejects three of the four**. Only 806.0 MHz passes, at −0.343 ± 0.009 ppm, and
+it is repeatable to 11 Hz across three separate sessions. One surviving reference with nothing
+independent to check it against is not a calibration, so it is recorded as indicative and not
+quoted as the receiver's error.
+
+A GSM FCCH burst was tried as an independent method with entirely different systematics and
+returned −1.65 ppm, disagreeing with all four notch measurements. That disagreement is
+unresolved and is itself a reason not to quote a figure.
+
+### What would settle it
+
+A GPS-disciplined oscillator, either as the HackRF's clock input or as a reference transmitter.
+That is the same class of instrument the power calibration needs
+([#41](https://github.com/alesan121/esm446/issues/41)) and it is the honest answer: this
+measurement is limited by not having a traceable reference, not by the technique.
+
+The tooling stays in the repository because it is now verified — unity gain, tilt immunity,
+noise rejection, and a refusal to measure a contaminated capture — and because the bound it
+establishes is genuinely useful: whatever the crystal is doing, it is doing it at well under
+a part per million, which is far better than the specification permits and small enough not to
+disturb emitter grouping, where the tolerance is 3 kHz.
 
 ## What remains unmeasured
 
@@ -245,10 +299,8 @@ The method, and the three false starts that preceded it, are documented in
   because those figures are not physical at this frequency — see `esm446/core/antenna.py`.
   Gain by substitution against a quarter-wave reference needs no extra equipment and has not
   been done.
-- **Frequency accuracy.** *(measured -- see below)*
-- **Superseded:** Reported frequencies are consistent to within tens of hertz across
-  captures, but nothing has established that they are *correct*. The HackRF's crystal drifts
-  by several parts per million, which at 446 MHz is hundreds of hertz of systematic error.
-  Calibrating against a broadcast carrier would settle it.
+- **Frequency accuracy, to better than a bound.** Established as under 1 ppm and negative;
+  see the section above for why four cellular references disagree by more than that bound is
+  tight. Needs a disciplined oscillator.
 - **Achieved image rejection.** Where the images fall is computed; how far down they are is
   not measured.

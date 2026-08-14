@@ -275,6 +275,25 @@ it is repeatable to 11 Hz across three separate sessions. One surviving referenc
 independent to check it against is not a calibration, so it is recorded as indicative and not
 quoted as the receiver's error.
 
+### A second site supports the traffic explanation, and does not settle it
+
+A shorter run (four local oscillators, not six) from a second site with 18–25 dB more SNR on
+both carriers than the first campaign:
+
+| carrier | measured | scatter |
+|---|---|---|
+| 816.0 MHz | −0.011 ± 0.007 ppm | tight |
+| 940.0 MHz | −0.137 ± 0.051 ppm | wide |
+
+If the problem were the local oscillator or the receiver, more signal would not have changed
+anything. It did: 816.0 MHz's own scatter fell by roughly an order of magnitude at the
+stronger site, while 940.0 MHz stayed noisy — which is what "sensitive to the neighbouring
+subcarrier traffic, not to SNR" predicts, since traffic loading is independent of link budget.
+The two carriers still disagree, 0.126 ppm against a combined statistical uncertainty of
+0.051. This is consistent with everything above and does not replace it: four points per
+carrier is half the first campaign's depth, and the honest result stays what it was --
+**negative, under 1 ppm, bounded and not calibrated.**
+
 A GSM FCCH burst was tried as an independent method with entirely different systematics and
 returned −1.65 ppm, disagreeing with all four notch measurements. That disagreement is
 unresolved and is itself a reason not to quote a figure.

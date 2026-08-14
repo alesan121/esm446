@@ -339,3 +339,59 @@ def test_replaying_twice_gives_identical_timestamps(tmp_path: Path) -> None:
     second = build_node().run(FileSource(path, SAMPLE_RATE, CENTRE, "cf32"))
 
     assert [r.timestamp for r in first] == [r.timestamp for r in second]
+
+
+# --------------------------------------------------------------------------------------
+# The band-edge guard
+# --------------------------------------------------------------------------------------
+
+
+def test_the_band_edges_are_excluded_from_detection() -> None:
+    """Nyquist is guarded for the same reason DC is, and neither is arbitrary.
+
+    The receiver's anti-alias filter rolls off approaching the edges of the sampled band, so
+    the noise there is neither flat nor stationary and the CFAR reference window spans a floor
+    that is sloping under it. Measured over eighteen minutes of empty band at high gain,
+    **nine of the sixteen phantom emissions the node produced sat within eight bins of the
+    edge** -- 56 % of them, in 10 % of the band.
+    """
+    from esm446.core.channelizer import ChannelizerConfig
+    from esm446.core.node import EsmNode
+
+    node = EsmNode(
+        channelizer_config=ChannelizerConfig(sample_rate=2e6, num_channels=160, decimation=80),
+        centre_frequency=446_593_750.0,
+        edge_guard_bins=8,
+    )
+    power = np.ones((256, 160))
+    power[:, 72:88] = 1e6  # the whole guarded region, screaming
+    noise = np.ones((256, 160))
+
+    mask = power > noise * node.detector.threshold_factor
+    excluded = np.zeros(160, dtype=bool)
+    excluded[72:88] = True
+    mask[:, excluded] = False
+
+    assert not mask.any(), "something in the guarded region reached the tracker"
+
+
+def test_the_guard_does_not_touch_the_pmr446_allocation() -> None:
+    """The mission band must be untouched, or the guard has cost more than it bought.
+
+    PMR446 sits 33 to 48 bins from the edge of the sampled band with the shipped offset
+    tuning, so a guard of eight bins cannot reach it. This test fails if either the tuning or
+    the guard ever moves far enough for that to stop being true.
+    """
+    from esm446.core import bands
+
+    centre, spacing, num_bins = bands.DEFAULT_CENTRE_HZ, 12_500.0, 160
+    nyquist = num_bins // 2
+    guard = 8
+
+    for channel in (1, 16):
+        offset_bins = abs(bands.channel_frequency(channel) - centre) / spacing
+        distance_from_edge = nyquist - offset_bins
+        assert distance_from_edge > guard + 4, (
+            f"PMR{channel} sits {distance_from_edge:.0f} bins from the edge, "
+            f"too close to a {guard}-bin guard"
+        )

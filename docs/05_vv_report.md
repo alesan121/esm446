@@ -15,7 +15,7 @@ which runs the real channeliser, detector and estimator and writes the underlyin
 `figures/results.json`. Nothing here is drawn by hand, and the report's tables and its plots
 are read from the same file so they cannot disagree.
 
-**Summary:** 45 requirements. **42 MET**, **2 PARTIAL**, **1 BLOCKED**. The blocker is a
+**Summary:** 45 requirements. **41 MET**, **3 PARTIAL**, **1 BLOCKED**. The blocker is a
 calibrated power source; every consequence of not having one is traced below rather than
 absorbed.
 
@@ -300,39 +300,45 @@ sentinel, `estimate_from_report` returns `None`, and the link budget's predicted
 figures are labelled as computed from datasheet values for a device that has not been
 characterised. See [#41](https://github.com/alesan121/esm446/issues/41).
 
-**REQ-CAL-006 — frequency accuracy. MET, and the route to it is the report.** Measured
-against the unused centre subcarrier of two LTE band 20 downlink carriers, whose base stations
-are held to 0.05 ppm: **-0.24 +/- 0.02 ppm**, which is -107 +/- 9 Hz at 446 MHz. Two
-independent carriers ten megahertz apart agree to 0.002 ppm against a combined uncertainty of
-0.042, which bounds any bias in the method: a bias would not cancel between them.
+**REQ-CAL-006 — frequency accuracy. PARTIAL, and the failure analysis is the result.**
+Consistency between captures is verified. Absolute accuracy is **bounded, not calibrated**:
+across four cellular carriers spanning 806 to 1835 MHz every measurement falls between -0.17
+and -0.62 ppm, so the receiver's error is negative and under a part per million, which is
+under 450 Hz at 446 MHz.
 
-Three methods were tried and two were eliminated by measurement rather than by opinion.
+No tighter figure is quoted, and the reason is worth more than a number would have been.
 
-A GSM FCCH burst is a pure tone at exactly 67 708.33 Hz above its carrier, and a phase-slope
-estimator recovers it to 0.38 Hz when fifty bursts are averaged at 20 dB. It was abandoned
-because the same test showed the estimator collapsing below about 10 dB of burst SNR -- phase
-unwrapping slips cycles and the error reaches 1.4 kHz at 5 dB -- and no GSM carrier receivable
-here was strong enough.
+The estimator first shipped had a **14 % scale error**. It took the centroid of the power
+deficit over a window fixed on the nominal frequency, and such a centroid contracts towards
+the window centre as the notch moves away from it. It was found by closed-loop injection:
+shifting a real capture by a known amount and re-measuring recovered 86 % of every shift, on
+every capture tried. The unit tests did not catch it because their tolerance was 150 Hz on
+shifts of a few hundred hertz -- wider than the error. The replacement estimates the notch's
+axis of symmetry, which has unity gain by construction and measures 0.29 % on real captures,
+and `test_the_measurement_has_unity_gain` now tests the *slope* across several shifts rather
+than each point, because slope is the quantity a scale error corrupts. That test fails against
+the estimator it replaced, which is the only evidence that a regression test is worth having.
 
-A band-edge midpoint was tried next and is unusable in this band, because band 20 carries two
-adjacent 10 MHz blocks whose skirts overlap where the lower edge has to be found. It put the
-carrier centre 96 kHz from any raster point.
+A second defect: one capture had been taken with the receiver tuned onto the carrier, putting
+its own local-oscillator spur inside the notch. It read -14 Hz where six other local
+oscillators on the same carrier read -109 to -367 Hz, biasing towards zero -- the direction
+that makes a receiver look better calibrated than it is. Captures tuned within 200 kHz of the
+carrier are now refused.
 
-The DC subcarrier notch works because it is a local feature no neighbour can move. But the
-obvious estimator for it does not: taking the centroid of the power deficit is so sensitive to
-spectral tilt that one decibel across the measurement window moves the answer 1638 Hz, two
-parts per million. That was not deduced -- it was found because two real carriers disagreed by
-1.0 ppm against a combined uncertainty of 0.29, and then reproduced against a synthetic notch
-under known tilt. Removing a straight line fitted to the notch's own flanks reduces the tilt
-sensitivity from 4460 Hz to 5 Hz, and the two carriers then agree.
+With both fixed, the four references still disagree at chi2/dof = 30. Repeating one carrier at
+a fixed local oscillator, ten captures over two minutes, shows why: the estimate wanders by up
+to 0.14 ppm while nothing about the receiver changes. The notch is a gap in a live, loaded
+signal, and the traffic on the subcarriers either side of it is what the symmetry estimate is
+comparing. A stability screen -- a reference is usable only if its own repeats agree to better
+than 0.05 ppm, which is a judgement about the reference and not about whether it agrees with
+the others -- rejects three of the four. The survivor, 806.0 MHz, gives -0.343 +/- 0.009 ppm
+and repeats to 11 Hz across three sessions, but one reference with nothing independent to
+check it against is not a calibration. A GSM FCCH burst, an independent method with different
+systematics, returned -1.65 ppm and that disagreement is unresolved.
 
-One further trap is recorded because it inverts the intuition. The guard against measuring an
-empty band was first written as a minimum notch depth, and depth fails in the dangerous
-direction: pure noise reaches 23 to 24 dB below its own fitted line while the real carriers
-measure 11 to 12, because a single noise bin can be very low while a notch is broad and
-smooth. A depth test accepts noise and rejects signal. Width separates them by a factor of
-forty -- 13.6 to 14.6 kHz against 0.31 kHz -- and matches LTE's 15 kHz subcarrier, so width is
-what the tool tests.
+Settling it needs a disciplined oscillator, which is the same instrument REQ-CAL-004 is
+blocked on. The measurement is limited by the absence of a traceable reference, not by the
+technique.
 
 
 **Specific emitter identification — attempted, and it failed.** The ±37.5 kHz spurious pair
@@ -360,7 +366,7 @@ win; the real captures said no, and the real captures decided it.
 | Calibration (REQ-CAL) | 6 | 3 | 2 | 1 |
 | Legal and ethical (REQ-LEG) | 5 | 5 | — | — |
 | Configuration (REQ-CFG) | 3 | 3 | — | — |
-| **Total** | **45** | **42** | **2** | **1** |
+| **Total** | **45** | **41** | **3** | **1** |
 
 No requirement is orphaned: every one names a verifying test or states its blocker, and
 `tests/test_requirements.py` fails the build if that stops being true.

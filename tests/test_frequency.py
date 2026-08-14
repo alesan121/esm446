@@ -331,3 +331,55 @@ def test_captures_that_all_fail_are_refused_rather_than_answered() -> None:
 def test_no_captures_at_all_is_refused() -> None:
     with pytest.raises(ValueError, match="no captures given"):
         measure_notch_error([], NOTCH_RATE, NOTCH_NOMINAL)
+
+
+# --------------------------------------------------------------------------------------
+# Scale: the property the earlier tolerances were too loose to pin
+# --------------------------------------------------------------------------------------
+
+
+def test_the_measurement_has_unity_gain() -> None:
+    """A shift must be recovered at its full size, not at a fraction of it.
+
+    This is the test that was missing. The first estimator took the centroid of the power
+    deficit over a window fixed on the nominal frequency, and a centroid computed that way
+    contracts towards the window centre as the notch moves away from it: it returned 86 % of
+    every shift, so every offset it reported was 14 % too small. The tests of the day used a
+    150 Hz tolerance on shifts of a few hundred hertz, which is wider than the error, so they
+    passed throughout.
+
+    What is tested is the slope across several shifts rather than each shift on its own.
+    A synthetic capture short enough to run in a test averages only a handful of transforms,
+    so each point carries around a hundred hertz of its own noise; the slope averages that
+    away and is exactly the quantity a scale error corrupts. Measured on real captures, where
+    the averaging is far deeper, the shipped estimator's gain error is 0.29 %.
+    """
+    shifts = np.array([-3000.0, -1500.0, 0.0, 1500.0, 3000.0])
+    measured = np.array(
+        [measure_notch_centre(lte_like(s), NOTCH_RATE, NOTCH_LO, NOTCH_NOMINAL) for s in shifts]
+    )
+
+    gain = float(np.polyfit(shifts, measured, 1)[0])
+
+    assert gain == pytest.approx(1.0, abs=0.05), (
+        f"gain is {gain:.3f} where 1.000 is required. The centroid this replaced measured "
+        f"0.86, so every offset it reported was 14 % too small."
+    )
+
+
+def test_a_receiver_tuned_onto_the_carrier_is_refused() -> None:
+    """The local-oscillator spur fills the notch, and it biases towards zero.
+
+    Refusing is the only safe behaviour: the contamination makes the receiver look better
+    calibrated than it is, so it would never announce itself as an outlier.
+    """
+    with pytest.raises(ValueError, match="local-oscillator leakage"):
+        measure_notch_centre(lte_like(), NOTCH_RATE, NOTCH_NOMINAL, NOTCH_NOMINAL)
+
+
+def test_a_reference_line_needs_flanks_clear_of_the_notch() -> None:
+    """Levelling against the notch's own skirts is what the window width has to prevent."""
+    with pytest.raises(ValueError):
+        measure_notch_centre(
+            lte_like(), NOTCH_RATE, NOTCH_LO, NOTCH_NOMINAL, half_window_hz=1_000.0
+        )

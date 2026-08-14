@@ -115,6 +115,16 @@ OCCUPIED_TOLERANCE = 0.15
 #: tenth of a kilohertz, a thousand times finer than the step, so the snap is unambiguous.
 LTE_RASTER_HZ = 100_000.0
 
+#: How far the receiver must be tuned from the carrier being measured.
+#:
+#: A direct-conversion receiver leaks its local oscillator into the mixer, putting a spur at
+#: baseband zero that this project measures at 31 dB above the noise floor. Tuned onto the
+#: carrier, that spur lands inside the notch and fills it. Measured: such a capture returned
+#: -14 Hz while six other local oscillators on the same carrier returned -109 to -367 Hz, so
+#: the contamination is not subtle and it biases towards zero, which is the direction that
+#: makes a receiver look better calibrated than it is.
+MINIMUM_TUNING_OFFSET_HZ = 200_000.0
+
 
 @dataclass(frozen=True)
 class FrequencyError:
@@ -293,7 +303,7 @@ def measure_notch_centre(
     sample_rate: float,
     centre_hz: float,
     nominal_hz: float,
-    half_window_hz: float = 20_000.0,
+    half_window_hz: float = 40_000.0,
     minimum_width_hz: float = 5_000.0,
 ) -> float:
     """Locate an LTE carrier's unused centre subcarrier, in hertz.
@@ -301,20 +311,35 @@ def measure_notch_centre(
     The notch sits at exactly the carrier frequency and is a local feature, so a neighbouring
     carrier cannot move it the way it moves a band edge.
 
-    A straight line fitted to the notch's flanks is removed in decibels before the centroid is
-    taken. That step is not tidiness: measured against a synthetic notch, one decibel of tilt
-    across the window moves an undetrended centroid by 1638 Hz, and detrending reduces the same
-    case to 5 Hz. Without it, two real carriers disagreed by 1.0 ppm.
+    **The estimate is the notch's axis of symmetry, not the centroid of its power deficit.**
+    That is not a refinement. The centroid was the first implementation and it has a scale
+    error: a centroid taken over a window fixed on the nominal frequency contracts toward the
+    window centre as the notch moves away from it. Measured by shifting real captures by a
+    known amount and recovering it, the centroid returned 86 % of the shift, consistently,
+    on every capture tried -- so every offset it reported was 14 % too small. The synthetic
+    tests did not catch it because their tolerance was wider than the error.
+
+    The axis of symmetry has unity gain by construction: the notch is symmetric about the
+    carrier centre because the unused subcarrier is at the centre, so the offset that best
+    matches the profile against its own mirror image is the offset of the notch. Measured by
+    the same closed-loop injection over +/-3 kHz on five real captures, the worst recovery
+    error is 20 Hz, a gain error of 0.7 %.
+
+    A straight line fitted well outside the notch is removed in decibels first. The flank
+    region matters: an earlier version fitted it over 10-20 kHz, which is on the notch's own
+    skirts, so the reference was contaminated by the feature it was meant to level.
 
     Args:
         iq: Complex baseband containing the carrier.
         sample_rate: Its sample rate.
-        centre_hz: Where the receiver was tuned. Must not equal ``nominal_hz``, or the
-            receiver's own local-oscillator leakage lands on the notch being measured.
+        centre_hz: Where the receiver was tuned. Must differ from ``nominal_hz`` by enough
+            that the receiver's own local-oscillator leakage does not land in the notch.
+            Measured, a capture tuned onto the carrier read -14 Hz where every other local
+            oscillator on the same carrier read -109 to -367 Hz: the spur fills the notch and
+            pulls the estimate onto baseband DC.
         nominal_hz: The carrier's licensed centre, on the 100 kHz raster.
-        half_window_hz: Half-width of the window fitted. Twenty kilohertz is wide enough for
-            the flanks and narrow enough that the receiver's own response is straight across
-            it.
+        half_window_hz: Half-width of the window fitted. Forty kilohertz leaves the notch
+            (about +/-10 kHz) clear of the flank region used for the reference line.
         minimum_width_hz: How wide the depression must be to count as a carrier centre.
 
             Width rather than depth, and the reason is the opposite of the intuition: on real
@@ -334,6 +359,15 @@ def measure_notch_centre(
         ValueError: If no notch of the required depth is present, which is what an empty band
             or a mistuned capture looks like.
     """
+    if abs(centre_hz - nominal_hz) < MINIMUM_TUNING_OFFSET_HZ:
+        raise ValueError(
+            f"the receiver was tuned {abs(centre_hz - nominal_hz) / 1e3:.0f} kHz from the "
+            f"carrier, and at least {MINIMUM_TUNING_OFFSET_HZ / 1e3:.0f} kHz is required. Its "
+            f"own local-oscillator leakage sits at baseband zero and would fill the notch: a "
+            f"capture tuned onto the carrier measured -14 Hz where every other local "
+            f"oscillator on that carrier measured -109 to -367 Hz."
+        )
+
     frequencies, power = average_spectrum(iq, sample_rate, centre_hz, fft_size=1 << 18)
     selected = np.abs(frequencies - nominal_hz) < half_window_hz
     if selected.sum() < 50:
@@ -344,8 +378,11 @@ def measure_notch_centre(
         decibels = 10.0 * np.log10(np.maximum(power[selected], 1e-30))
     decibels = np.convolve(decibels, np.ones(9) / 9.0, mode="same")
 
-    # The line is fitted to the flanks only: including the notch would let it tilt the fit.
-    flanks = np.abs(offsets) > half_window_hz / 2.0
+    # The reference line is fitted well outside the notch. Fitting it over the half-window,
+    # as an earlier version did, puts it on the notch's own skirts.
+    flanks = np.abs(offsets) > half_window_hz * 0.55
+    if flanks.sum() < 20:
+        raise ValueError("the window leaves no flank to level the spectrum against")
     flattened = decibels - np.polyval(np.polyfit(offsets[flanks], decibels[flanks], 1), offsets)
 
     resolution = sample_rate / (1 << 18)
@@ -362,11 +399,64 @@ def measure_notch_centre(
             f"narrow dips; a carrier's unused centre subcarrier is broad and smooth."
         )
 
-    deficit = np.maximum(-flattened, 0.0)
-    total = deficit.sum()
-    if total <= 0.0:
+    if not np.any(flattened < -3.0):
         raise ValueError("nothing dips below the fitted line; there is no notch here")
-    return float((offsets * deficit).sum() / total)
+
+    return _axis_of_symmetry(offsets, flattened)
+
+
+#: How far either side of the axis the profile is compared with its own mirror image. Eleven
+#: kilohertz covers the notch and stops before the next subcarrier carries much traffic.
+_SYMMETRY_SPAN_HZ = 11_000.0
+
+#: How far the axis is searched for. The receiver's error is hundreds of hertz; six kilohertz
+#: is ample and keeps the mirrored profile inside the window.
+_SYMMETRY_SEARCH_HZ = 6_000.0
+
+
+def _axis_of_symmetry(
+    offsets: np.ndarray,
+    profile: np.ndarray,
+    span_hz: float = _SYMMETRY_SPAN_HZ,
+    search_hz: float = _SYMMETRY_SEARCH_HZ,
+    step_hz: float = 25.0,
+) -> float:
+    """The offset about which a profile best matches its own mirror image.
+
+    Unity gain is the property being bought. Shifting the profile shifts the axis by exactly
+    the same amount, because the comparison is between the profile and its reflection rather
+    than between the profile and a fixed window.
+
+    Args:
+        offsets: Frequency offsets of the profile samples, in hertz.
+        profile: The levelled spectrum, in decibels.
+        span_hz: How far either side of a trial axis to compare.
+        search_hz: How far either side of zero to search for the axis.
+        step_hz: Grid step. The minimum is refined by parabolic interpolation, so this bounds
+            the search rather than the resolution.
+
+    Returns:
+        The axis position, in hertz.
+    """
+    lag = np.arange(-span_hz, span_hz + 1.0, 50.0)
+    trials = np.arange(-search_hz, search_hz + step_hz, step_hz)
+    cost = np.array(
+        [
+            np.mean(
+                (np.interp(axis - lag, offsets, profile) - np.interp(axis + lag, offsets, profile))
+                ** 2
+            )
+            for axis in trials
+        ]
+    )
+
+    best = int(np.argmin(cost))
+    if 0 < best < cost.size - 1:
+        left, middle, right = cost[best - 1], cost[best], cost[best + 1]
+        curvature = left - 2.0 * middle + right
+        if curvature > 0.0:
+            return float(trials[best] + 0.5 * (left - right) / curvature * step_hz)
+    return float(trials[best])
 
 
 def nearest_carrier(frequency_hz: float, raster_hz: float = LTE_RASTER_HZ) -> float:

@@ -267,8 +267,8 @@ estimator's single shadowing sigma implied.
 
 | Requirement | Result |
 |---|---|
-| REQ-PER-001 — real time with ≥2× margin | **MET — 0.23 CPU-s/s median, 4.4× real time** |
-| REQ-PER-002 — channeliser under 0.5 CPU-s/s | **MET — 0.17 median** |
+| REQ-PER-001 — real time with ≥2× margin | **MET — 0.30 CPU-s/s median, 3.4× real time** |
+| REQ-PER-002 — channeliser under 0.5 CPU-s/s | **MET — 0.18 median** |
 | REQ-PER-003 — survey under 5 % of the channeliser | **MET — 0.009** |
 | REQ-PER-004 — memory does not scale with capture length | **MET** |
 | REQ-IF-001 — CoT validates against the schema | **MET** |

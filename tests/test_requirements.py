@@ -312,3 +312,54 @@ def test_the_throughput_range_is_published_not_just_the_median() -> None:
 
     prose = Path("docs/05_vv_report.md").read_text(encoding="utf-8")
     assert "median of five runs" in prose
+
+
+def test_no_two_documents_quote_a_different_throughput() -> None:
+    """The failure this repository keeps having, caught properly this time.
+
+    The existing check asks whether *some* document quotes the measured figure, which passes
+    happily while three others quote something else. Throughput has now diverged twice: 0.21
+    against 0.26 in the first audit, and 0.23 against 0.26 in the second, each time because a
+    number was updated in the files somebody remembered and not in the files they did not.
+
+    So the question asked here is not "is this figure right" but "do the documents agree",
+    which is the one a reader answers for themselves in about thirty seconds.
+    """
+    quoted: dict[str, set[str]] = {}
+    pattern = re.compile(r"(\d\.\d{2,3})\s*(?:CPU-s per signal second|CPU-s/s)")
+
+    for path in [Path("README.md"), *sorted(Path("docs").glob("*.md"))]:
+        for value in pattern.findall(path.read_text(encoding="utf-8")):
+            quoted.setdefault(value, set()).add(path.name)
+
+    # The channeliser and the whole node are both quoted, so more than one value is expected;
+    # what is not acceptable is the same quantity carrying two values in different files.
+    node_like = {v: files for v, files in quoted.items() if 0.20 <= float(v) <= 0.60}
+    detail = ", ".join(f"{v} in {sorted(f)}" for v, f in sorted(node_like.items()))
+    assert len(node_like) <= 1, f"documents disagree about the node's throughput: {detail}"
+
+
+def test_the_real_time_margin_agrees_with_the_throughput_quoted() -> None:
+    """A margin and a cost are the same measurement written two ways, and they drifted apart.
+
+    One document said 0.23 CPU-s/s and 4.4x while another said 0.26 and 3.9x. Both pairs are
+    self-consistent, which is exactly why nobody noticed that the two documents were
+    describing different runs.
+    """
+    # Both figures must appear on the same line: a cost in one paragraph and a margin in
+    # another are not claims about the same run and comparing them proves nothing.
+    pattern = re.compile(
+        r"(\d\.\d{2,3})\s*(?:CPU-s per signal second|CPU-s/s)[^\n]{0,40}?(\d\.\d)×"
+    )
+
+    for path in [Path("README.md"), *sorted(Path("docs").glob("*.md"))]:
+        text = path.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            cost, margin = float(match.group(1)), float(match.group(2))
+            tail = text[match.end() : match.end() + 30]
+            # "4.93 CPU-s/s, 4.8x slower" is consistent: a cost above one second per second
+            # is a multiple of real time in the other direction.
+            expected = cost if "slower" in tail else 1.0 / cost
+            assert (
+                abs(expected - margin) < 0.3
+            ), f"{path.name} quotes {cost} CPU-s/s and {margin}x, which do not agree"

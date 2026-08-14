@@ -44,8 +44,8 @@ available, with the blocker named. Nothing is marked met on the strength of an i
 
 | ID | Requirement | Method | Verified by | Status |
 |---|---|---|---|---|
-| REQ-PER-001 | The node shall process 2 MS/s across 160 channels in real time with a margin of at least 2x on the development machine. | T | `test_main_succeeds_within_a_generous_budget` | MET — median of five runs 0.26 CPU-s/s, 3.9x |
-| REQ-PER-002 | The channeliser shall cost no more than 0.5 CPU-seconds per signal second. | T | `test_pfb_benchmark_keeps_up_with_real_time` | MET — median of five runs 0.20 |
+| REQ-PER-001 | The node shall process 2 MS/s across 160 channels in real time with a margin of at least 2x on the development machine. | T | `test_main_succeeds_within_a_generous_budget` | MET — median of five runs 0.30 CPU-s/s, 3.4x |
+| REQ-PER-002 | The channeliser shall cost no more than 0.5 CPU-seconds per signal second. | T | `test_pfb_benchmark_keeps_up_with_real_time` | MET — median of five runs 0.18 |
 | REQ-PER-003 | The wideband survey shall cost no more than 5 % of the channeliser. | T | `test_analyse_does_not_hold_the_whole_spectrogram` | MET — measured 0.009 |
 | REQ-PER-004 | Memory use shall not scale with capture length. | T | `test_waterfall_is_capped_rather_than_allocating_gigabytes` | MET |
 | REQ-PER-005 | The false alarm rate shall not change when the noise estimate is held between frames. | T | `test_holding_the_noise_estimate_does_not_change_the_false_alarm_rate` | MET |

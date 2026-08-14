@@ -164,6 +164,37 @@ which the available space does not allow. The receiver was at LNA 0 / VGA 0 and 
 compressing on either carrier, which makes the receiver the less likely of the two but does
 not settle it.
 
+## Measured: where the receiver's gain should be set, and why not higher
+
+Sweeping the baseband gain with the input open, at a fixed 32 dB of front-end gain, separates
+two regimes cleanly. Below about VGA 32 the noise floor barely moves with gain: the converter
+dominates and the front end is being wasted. From VGA 40 upward the floor rises one decibel
+per decibel, which is the condition where the input noise dominates and the receiver is doing
+what it was designed to do.
+
+| VGA | noise floor (dBFS) | rise for the gain applied |
+|---|---|---|
+| 0 | −88.96 | — |
+| 16 | −82.99 | +6.0 dB for 16 |
+| 24 | −82.03 | +6.9 dB for 24 |
+| 32 | −78.57 | +10.4 dB for 32 |
+| **40** | −71.39 | +17.6 dB for 40 |
+| 62 | −49.79 | +39.2 dB for 62 |
+
+Referred back to the input, the configured operating point of **VGA 20 sits about 9 dB worse
+than the asymptote** reached from VGA 40 on. On sensitivity alone the gain should be raised.
+
+**It is not raised, and the reason is measured.** At VGA 40 the receiver stops being masked by
+its own converter and starts seeing the environment, which is neither Gaussian nor stationary.
+Over eighteen minutes of empty band the node produced **sixteen phantom emissions** at that
+gain, about one every seventy seconds, against a false alarm rate 33 times lower at VGA 20.
+An order of battle assembled from that is noise with timestamps.
+
+So the shipped default stays at LNA 32 / VGA 20 and trades 9 dB of sensitivity for an output
+that can be believed. The figure is quoted here rather than buried because the trade is a
+deployment decision, not a constant: a quieter site, or a narrower capture that excludes the
+band edges where most of those phantoms sat, moves the balance.
+
 ## What remains unmeasured
 
 - **Absolute power.** Blocked on [#41](https://github.com/alesan121/esm446/issues/41).

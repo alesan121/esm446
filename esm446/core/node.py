@@ -118,6 +118,7 @@ class EsmNode:
         expected_ctcss_hz: float | None = None,
         tracker: EmissionTracker | None = None,
         dc_guard_bins: int = 1,
+        edge_guard_bins: int | None = None,
     ) -> None:
         self.config = channelizer_config
         self.centre_frequency = centre_frequency
@@ -130,6 +131,15 @@ class EsmNode:
         self.gains = gains
         self.expected_ctcss_hz = expected_ctcss_hz
         self.dc_guard_bins = dc_guard_bins
+        # Five per cent of the band either side of Nyquist. Proportional rather than
+        # absolute because the roll-off is a fraction of the sampled bandwidth: eight bins is
+        # 5 % of a 160-channel band and 20 % of a 40-channel one, and the fixed number quietly
+        # ate a fifth of the narrower test vectors before a test caught it.
+        self.edge_guard_bins = (
+            max(1, channelizer_config.num_channels // 20)
+            if edge_guard_bins is None
+            else edge_guard_bins
+        )
         self._bin_frequencies = bands.bin_frequencies(
             centre_frequency, channelizer_config.sample_rate, channelizer_config.num_channels
         )
@@ -182,6 +192,19 @@ class EsmNode:
             excluded[: self.dc_guard_bins] = True
             if self.dc_guard_bins > 1:
                 excluded[-(self.dc_guard_bins - 1) :] = True
+
+        # The other end of the band, excluded for the same kind of reason as DC. The receiver's
+        # anti-alias filter rolls off approaching Nyquist, so the noise floor there is neither
+        # flat nor stationary and detections in it are unreliable: measured over eighteen
+        # minutes of empty band at high gain, half the phantom emissions the node produced sat
+        # within five bins of the edge.
+        #
+        # It costs nothing that matters. The PMR446 allocation lives 33 to 48 bins from the
+        # edge, so the mission band is untouched, and the survey path -- which is what the
+        # wideband occupancy picture comes from -- does not go through this guard at all.
+        if self.edge_guard_bins > 0:
+            nyquist = self.config.num_channels // 2
+            excluded[nyquist - self.edge_guard_bins : nyquist + self.edge_guard_bins] = True
 
         # An emitter between two bins splits its energy and may clear neither on its own.
         # The pair test catches it; the adjacent-bin merge below turns the two flagged bins

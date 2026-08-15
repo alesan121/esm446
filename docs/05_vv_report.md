@@ -135,14 +135,51 @@ deaf or fired constantly, and neither failure announces itself.
 
 ![Probability of detection](figures/04_detection_probability.png)
 
-| | SNR for P<sub>d</sub> = 0.5 |
-|---|---|
-| On a bin centre | **15.0 dB** in-channel |
-| Half a bin off centre | **20.0 dB** in-channel |
+| | SNR for P<sub>d</sub> = 0.5, synthetic noise | SNR for P<sub>d</sub> = 0.5, real receiver noise |
+|---|---|---|
+| On a bin centre | **15.0 dB** in-channel | **11.0 dB** |
+| Half a bin off centre | **20.0 dB** in-channel | **17.0 dB** |
 
 Both at P<sub>fa</sub> = 1e-8 per cell per frame — which at 160 bins and a 25 kHz frame rate
 is four million cells a second, so 1e-8 is roughly one false alarm every three hours rather
 than the 400 a second a textbook 1e-4 would produce here.
+
+### Why a real-noise curve exists at all
+
+A P<sub>fa</sub> figure alone cannot tell a well-tuned detector from a deaf one — both report
+zero false alarms. The two-hour indoor run above found zero crossings over 2.88e10 cells
+against a 1e-8 design point, which by itself is also consistent with a threshold sitting
+higher than intended: rule-of-three on zero events in that many trials bounds the *measured*
+rate near 1e-10, two orders of magnitude under design, and a threshold that conservative would
+also cost detection range. That is a real, correctly-reasoned concern, and P<sub>fa</sub>
+cannot answer it. Only P<sub>d</sub> can.
+
+So the same sweep behind the synthetic curve was repeated against
+`tests/data/receiver_noise_lna32_vga20.cs8` — real captured receiver noise, antenna
+disconnected, the same vector the zero-false-alarm result uses — with a synthetic tone added
+on top at a controlled in-channel SNR, referenced against that window's own noise floor
+measured from the same reference-cell span (channels 6–34) the CFAR threshold itself reads,
+not a wideband time-domain RMS, which would be inflated by the local-oscillator spur at bin 0
+and would understate every SNR in the sweep. 52 overlapping windows across the 1.1-second
+vector, at each of 23 SNR points, two offsets.
+
+**The result answers the concern the wrong way round: real receiver noise reaches P<sub>d</sub>
+= 0.5 at a *lower* SNR than synthetic noise does, not a higher one — 11.0 dB against 15.0 dB
+on-centre, 17.0 dB against 20.0 dB off-centre.** The detector is not deaf. Read together with
+the near-zero real P<sub>fa</sub>, the coherent explanation is that this receiver's real noise,
+after channelising, is *less* heavy-tailed than the exponential-power distribution the CFAR
+threshold factor is derived for — tighter around its own floor, so both fewer noise-only
+crossings and more reliable signal-plus-noise crossings follow from the same cause. That
+explanation is plausible and consistent with what was measured, but it is **not confirmed**:
+it would take a measured amplitude distribution of the real noise, compared against the
+exponential assumption directly, to settle it, and that has not been done.
+
+**What this does not cover.** The vector used is receiver-only noise with the antenna
+disconnected — the easy case, not the harder one. `ambient_noise_lna32_vga40.cs8`, band noise
+at high gain with a real antenna and no emission, is the vector that originally exposed the
+held-noise-estimate defect and is neither Gaussian nor stationary; repeating this sweep
+against it, at the gain it was captured at, is the next real-noise validation this project
+needs and was not run in this session for lack of time, not because it was judged unnecessary.
 
 ---
 

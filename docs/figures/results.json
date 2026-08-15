@@ -7,6 +7,9 @@
     0.0009,
     0.001121
   ],
+  "real_noise_trials": 52,
+  "pd50_real_noise_centred_db": 11.0,
+  "pd50_real_noise_offset_db": 17.0,
   "pd50_centred_db": 15.0,
   "pd50_offset_db": 20.0,
   "coverage": {

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -181,8 +182,93 @@ def figure_false_alarm_rate(results: dict[str, Any]) -> None:
     ]
 
 
+#: Real receiver noise, antenna disconnected -- see tests/test_false_alarm_on_real_noise.py.
+#: Same vector the shipped-default zero-false-alarm result uses, so the two are the same
+#: operating point measured two ways: does nothing fire on it, and does a real signal cut
+#: through it at the SNR the synthetic-noise curve predicts.
+_REAL_NOISE_PATH = Path("tests/data/receiver_noise_lna32_vga20.cs8")
+
+
+def _real_noise_iq() -> np.ndarray | None:
+    """Raw IQ from the committed receiver-noise vector, or None if it is not present."""
+    if not _REAL_NOISE_PATH.exists():
+        return None
+    raw = np.fromfile(_REAL_NOISE_PATH, dtype=np.int8)
+    return (raw.astype(np.float32) / 128.0).view(np.complex64)
+
+
+def _tone_gain(window: int) -> float:
+    """Channel-20 power produced by a unit-amplitude tone, for converting SNR to amplitude.
+
+    Calibrated once against the channeliser itself rather than assumed, so it is exactly
+    right for this configuration instead of approximately right from a formula.
+    """
+    t = np.arange(window) / CONFIG.sample_rate
+    tone = np.exp(2j * np.pi * 20 * CONFIG.channel_spacing * t).astype(np.complex64)
+    spectra = PolyphaseChannelizer(CONFIG).process(tone)
+    power = (np.abs(spectra[1000:]) ** 2).astype(np.float64)
+    return float(power[:, 20].mean())
+
+
+def _real_noise_floor(noise: np.ndarray, start: int, window: int) -> float:
+    """This window's own in-channel noise floor, away from the DC spur and the target bins.
+
+    Computed from the real receiver noise alone, before any tone is added -- the reference
+    the injected tone's SNR is measured against, not a wideband time-domain RMS. Wideband RMS
+    would be dominated by the local-oscillator spur at bin 0 (28 dB over the floor, per
+    tests/test_false_alarm_on_real_noise.py) and so would systematically overstate the noise
+    the target channel actually carries, making every SNR in this sweep too generous.
+
+    Read from bins 6-34, the same reference-cell span `CfarConfig`'s defaults (24 reference
+    cells, 2 guard either side) actually use to threshold channel 20 -- not some other, more
+    convenient part of the spectrum. A receiver's noise floor is not obliged to be flat with
+    frequency, and referencing SNR against a different span than the detector's own threshold
+    sees would make the two numbers describe different things while looking like the same
+    measurement.
+    """
+    segment = noise[start : start + window].astype(np.complex64)
+    spectra = PolyphaseChannelizer(CONFIG).process(segment)
+    power = (np.abs(spectra[1000:]) ** 2).astype(np.float64)
+    reference_bins = np.r_[6:18, 22:34]
+    return float(np.median(power[:, reference_bins]))
+
+
+def _real_noise_trial(
+    noise: np.ndarray,
+    start: int,
+    window: int,
+    offset_bins: float,
+    snr_db: float,
+    noise_floor: float,
+    gain: float,
+) -> np.ndarray:
+    """A window of real receiver noise with a synthetic tone added at a controlled in-channel SNR.
+
+    The tone's amplitude is solved from this window's own measured noise floor and the
+    channeliser's own measured gain, not a formula carried over from the synthetic case --
+    the point is to ask whether the detector reaches the SNR the synthetic curve predicts
+    against noise this receiver actually produced, non-Gaussian tails and all.
+    """
+    segment = noise[start : start + window]
+    t = np.arange(window) / CONFIG.sample_rate
+    frequency = (20 + offset_bins) * CONFIG.channel_spacing
+    target_power = (10 ** (snr_db / 10)) * noise_floor
+    amplitude = math.sqrt(target_power / gain)
+    tone = amplitude * np.exp(2j * np.pi * frequency * t)
+    return (segment + tone).astype(np.complex64)
+
+
 def figure_detection_probability(results: dict[str, Any]) -> None:
-    """Probability of detection against SNR, on centre and at the worst offset."""
+    """Probability of detection against SNR, on synthetic noise and on real receiver noise.
+
+    The synthetic curve alone answers "does the CFAR math work". It cannot answer whether real
+    receiver noise costs anything beyond what Pfa already measures, because Pfa alone cannot
+    distinguish a well-tuned detector from a deaf one -- both report zero false alarms. This
+    repeats the same sweep against real, captured receiver noise (antenna disconnected, the
+    same vector the shipped-default zero-false-alarm result uses) with the tone added on top
+    at a controlled SNR, so a gap between the two curves is the real cost the synthetic figure
+    cannot see.
+    """
     import matplotlib.pyplot as plt
 
     snrs = np.arange(8, 26, 1.0)
@@ -198,12 +284,56 @@ def figure_detection_probability(results: dict[str, Any]) -> None:
             detected.append(float(mask[:, 19:23].any(axis=1).mean()))
         curves[label] = detected
 
+    real_noise = _real_noise_iq()
+    real_curves: dict[str, list[float]] = {}
+    if real_noise is not None:
+        window = 1 << 17
+        starts = list(range(0, len(real_noise) - window, 40_000))
+        real_snrs = np.arange(8, 31, 1.0)
+        gain = _tone_gain(window)
+        noise_floors = [_real_noise_floor(real_noise, start, window) for start in starts]
+        for label, offset in (("on bin centre", 0.0), ("half a bin off centre", 0.5)):
+            detected = []
+            for snr in real_snrs:
+                hits = []
+                for start, noise_floor in zip(starts, noise_floors):
+                    trial = _real_noise_trial(
+                        real_noise, start, window, offset, float(snr), noise_floor, gain
+                    )
+                    spectra = PolyphaseChannelizer(CONFIG).process(trial)
+                    power = (np.abs(spectra[1000:]) ** 2).astype(np.float64)
+                    detector = CfarDetector(CfarConfig(pfa=1e-8, method="os"))
+                    mask = detector.detection_mask(power)
+                    hits.append(bool(mask[:, 19:23].any(axis=1).any()))
+                detected.append(float(np.mean(hits)))
+            real_curves[label] = detected
+        results["real_noise_trials"] = len(starts)
+
     figure, axis = plt.subplots(figsize=(7, 4))
+    colours = {"on bin centre": "tab:blue", "half a bin off centre": "tab:orange"}
     for label, values in curves.items():
-        axis.plot(snrs, values, "o-", markersize=3, linewidth=1.2, label=label)
+        axis.plot(
+            snrs,
+            values,
+            "o-",
+            markersize=3,
+            linewidth=1.2,
+            color=colours[label],
+            label=f"{label} (synthetic)",
+        )
+    for label, values in real_curves.items():
+        axis.plot(
+            real_snrs,
+            values,
+            "s--",
+            markersize=3,
+            linewidth=1.2,
+            color=colours[label],
+            label=f"{label} (real noise)",
+        )
     axis.axhline(0.5, color="grey", linestyle=":", linewidth=1)
     axis.set_ylim(-0.02, 1.02)
-    axis.legend(fontsize=8)
+    axis.legend(fontsize=7)
     _style(
         axis,
         "REQ-FUN-004 — probability of detection at P_fa 1e-8",
@@ -213,6 +343,13 @@ def figure_detection_probability(results: dict[str, Any]) -> None:
     figure.tight_layout()
     figure.savefig(FIGURES / "04_detection_probability.png", dpi=130)
     plt.close(figure)
+
+    for label, values in real_curves.items():
+        crossing = next((real_snrs[i] for i, v in enumerate(values) if v >= 0.5), float("nan"))
+        key = "centred" if "centre" in label and "off" not in label else "offset"
+        results[f"pd50_real_noise_{key}_db"] = (
+            None if np.isnan(crossing) else round(float(crossing), 1)
+        )
 
     for label, values in curves.items():
         crossing = next((snrs[i] for i, v in enumerate(values) if v >= 0.5), float("nan"))

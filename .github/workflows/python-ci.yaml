@@ -41,6 +41,14 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
+      # Installed before the test run, not after: tests/test_matlab_consistency.py compares
+      # the MATLAB analysis scripts against the Python implementation, and skips rather than
+      # fails when Octave is absent. It was installed after the test step here for months,
+      # which means that check silently skipped on every single CI run since it was added --
+      # discovered by reading the workflow rather than by the check ever failing anything.
+      - name: Install Octave
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends octave
+
       - name: Run Black
         run: poetry run black --check .
 
@@ -75,12 +83,6 @@ jobs:
       # assembled node was 4.8x slower than real time.
       - name: Verify the node meets the real-time budget
         run: poetry run esm446-bench --skip-v0 --max-ratio 0.5
-
-      # Octave is what the MATLAB analysis scripts are verified against, and
-      # tests/test_matlab_consistency.py compares their figures with the Python. Without it
-      # those tests skip, and a divergence between the two derivations would go unnoticed.
-      - name: Install Octave
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends octave
 
       - name: Run Bandit
         run: poetry run bandit -c pyproject.toml -r .

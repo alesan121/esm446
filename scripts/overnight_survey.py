@@ -175,6 +175,8 @@ def capture(path: Path, seconds: float, lna_db: float, vga_db: float) -> dict:
         str(int(quantised.vga_db)),
         "-n",
         str(num_samples),
+        "-a",
+        "0",  # explicit: never rely on the RF amplifier's default state
         "-B",
     ]
     result = subprocess.run(  # nosec -- argv built from numeric config, no shell
@@ -279,6 +281,7 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
     reports_total = 0
     chunk_index = 0
     total_overruns = 0
+    consecutive_failures = 0
     aborted = None
 
     import resource
@@ -301,6 +304,7 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
 
             batch_count = 0
             if outcome["completed"]:
+                consecutive_failures = 0
                 with FileSource(chunk_path, SAMPLE_RATE_HZ, CENTRE_HZ, "cs8") as source:
                     while True:
                         block = source.read(1 << 16)
@@ -318,9 +322,27 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
                     reports_total += len(final)
                     batch_count += len(final)
             else:
+                consecutive_failures += 1
                 logger.error(
-                    "C3: chunk %d capture failed (rc=%s)", chunk_index, outcome["returncode"]
+                    "C3: chunk %d capture failed (rc=%s), %d consecutive failures",
+                    chunk_index,
+                    outcome["returncode"],
+                    consecutive_failures,
                 )
+                # No hardware, a bad cable, or a device unplugged by hand all look the same
+                # from here: hackrf_transfer exits fast and repeatedly. Spinning on that as
+                # fast as the OS allows is what actually happened once already tonight --
+                # thousands of failed attempts logged inside one second. Back off, and give
+                # up cleanly rather than doing that for the rest of the budget.
+                if consecutive_failures >= 20:
+                    logger.error(
+                        "C3: %d consecutive capture failures, giving up", consecutive_failures
+                    )
+                    aborted = "device unavailable"
+                    break
+                time.sleep(min(2 ** min(consecutive_failures, 6), 60))
+                chunk_path.unlink(missing_ok=True)
+                continue
 
             chunk_path.unlink(missing_ok=True)
 

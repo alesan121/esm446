@@ -83,6 +83,17 @@ the mitigation is not in the shipped detection path, `detect_pairs` defaults to 
 quoting the on-centre value alone would overstate the system by 6 dB for exactly the emitters
 it is least likely to already know about.
 
+**A second, smaller number lives in `esm446/core/detector.py`: 5.38 dB, not 6.02.** That is
+not a typo or a disagreement -- it is a different quantity. 6.02 dB is the channeliser's
+*power response* at the worst bin offset, a property of the filter alone, measured with
+`figure_sensitivity_ripple` above. 5.38 dB is the *detection* penalty, the shift in SNR
+needed for P<sub>d</sub> = 0.5 measured end-to-end through the CFAR detector (20.19 dB at the
+worst offset against 14.81 dB on-centre). Detection is not linear in power, so the two need
+not match, and empirically the detector's own noise-averaging softens the channeliser's raw
+6.02 dB by about 0.6 dB. **6.02 dB is the specification figure** -- it bounds every offset
+without needing a detector in the loop -- and 5.38 dB is the measured detection-cost figure
+that confirms the spec is not optimistic.
+
 ---
 
 ## 4. Detection
@@ -113,19 +124,33 @@ Measured, with the DC bin excluded exactly as the node excludes it:
 
 | capture | held level | level tracked per frame |
 |---|---|---|
-| Receiver only, antenna disconnected | **no crossing in 4.4 M cells** | no crossing |
-| Real band, configured gain (VGA 20) | 3.6e-5 | **2.5e-7** |
+| Receiver only, antenna disconnected | **no crossing in 4.4 M cells**¹ | no crossing¹ |
+| Real band, configured gain (VGA 20) | 3.6e-5 | **2.5e-7**² |
 | Real band, high gain (VGA 40) | 3.3e-3 | **8.3e-6** |
+
+¹ This vector's antenna port was open, not 50Ω-terminated, and at this gain the ADC occupies
+only ~2 bits (§4 below has the full retraction). Zero crossings on a 5-level quantised signal
+is closer to "almost nothing to cross" than to "correctly rejected" -- read as a passing
+regression check, not as evidence the threshold is sound.
+
+² Superseded by a much larger, antenna-connected, real-off-grid-emitter-confirmed run at the
+same gain: **zero crossings over 2.88e10 cells**, a two-hour indoor capture -- see
+`docs/04_link_budget.md`, "Measured: a real off-grid emitter, found indoors and confirmed by
+retune". That result is not contaminated by the quantisation problem above (antenna
+connected, real signal recovered from it), and is the better evidence for this operating
+point. Kept here as the earlier measurement in the chain, not as the final word.
 
 Separating the estimate into a held shape and a per-frame level costs **0.03 CPU-seconds per
 signal second** and removes the broadband bursts entirely. The node now reports nothing at all
 on the capture that produced eight phantoms, and detection of the two real emitters in the
 recorded vectors is bit-for-bit unchanged at 74.7 % and 74.1 % of frames.
 
-**It is PARTIAL because 2.5e-7 is not 1e-8.** The residual is the environment: real receiver
-noise is neither Gaussian nor stationary, and a threshold derived from an exponential
-assumption cannot deliver an exponential tail probability against it. The design point is met
-where the assumption holds, and the gap where it does not is now measured rather than assumed.
+**It is PARTIAL because 2.5e-7 (superseded) and the later 2.88e10-cell result both fall short
+of proving 1e-8** -- the second because absence of a crossing in one finite run bounds the
+rate rather than measuring it. The residual is the environment: real receiver noise is
+neither Gaussian nor stationary, and a threshold derived from an exponential assumption
+cannot deliver an exponential tail probability against it. The design point is met where the
+assumption holds, and the gap where it does not is now measured rather than assumed.
 
 **One near miss worth recording.** The cheapest level statistic, a plain mean over all bins,
 gave the best false alarm rate of anything tried — and raised the threshold by up to 26 dB

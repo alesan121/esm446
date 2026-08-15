@@ -111,10 +111,17 @@ def test_the_ambient_vector_contains_no_emission_either(ambient_noise: np.ndarra
 
 
 def test_pure_receiver_noise_produces_no_false_alarms(receiver_noise: np.ndarray) -> None:
-    """The best case, and the one that shows the detector itself is sound.
+    """Zero crossings on this vector -- but see the caveat before trusting what that implies.
 
-    Four million cells of real receiver noise at the configured operating gain, and not one
-    crossing. Whatever the harder captures show, it is not a broken threshold.
+    Four million cells, not one crossing. That is a true, useful regression check: nothing in
+    the detector regresses to firing on this vector. It does **not** show "the detector itself
+    is sound" the way it once claimed to here -- this vector was captured with the antenna
+    disconnected and the SMA port open, and at this gain the ADC occupies only ~2 bits (5 of
+    256 int8 codes; see docs/05_vv_report.md). A signal quantised that hard has almost no
+    dynamic range for a threshold to cross regardless of whether the CFAR math is sound, so
+    zero crossings here is closer to "nothing to cross" than to "correctly rejected". What
+    would show soundness is the same test against a properly-terminated or antenna-connected
+    capture at this gain, which does not exist yet.
     """
     assert false_alarm_rate(receiver_noise, track_level=False) == 0.0
     assert false_alarm_rate(receiver_noise, track_level=True) == 0.0

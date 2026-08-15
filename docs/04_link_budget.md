@@ -298,6 +298,28 @@ A GSM FCCH burst was tried as an independent method with entirely different syst
 returned −1.65 ppm, disagreeing with all four notch measurements. That disagreement is
 unresolved and is itself a reason not to quote a figure.
 
+### The DVB-T method worked, once, and does not settle it either
+
+The band-edge method this project could never validate before -- no multiplex was ever
+receivable at usable strength -- finally measured something, once the telescopic antenna was
+cut for the DVB-T band (12.9 cm, a quarter wave at 580 MHz) instead of 446 MHz. UHF channel 28
+(530 MHz) gave **−0.14 ppm**, with the method's own edge-agreement uncertainty at ±0.39 ppm --
+wide, but consistent with the surviving LTE reference (806.0 MHz, −0.343 ± 0.009 ppm) and with
+the overall bound.
+
+The repeatability check this project applies to every frequency method -- retune and
+re-measure -- **could not be completed**, and the reason is worth recording rather than
+hiding: at 10 MS/s, a 3.8 MHz half-channel needs the local oscillator within about 1 MHz of
+the channel centre to keep both edges inside the Nyquist window, and that is too close for
+the receiver's own local-oscillator leakage to stay clear of the fitted region. One retune
+attempt landed the leakage spur inside the analysis window and returned an edge-agreement of
+±405 kHz -- obvious nonsense, correctly not mistaken for a measurement. A second attempt
+moved far enough to clear the leakage and lost a channel edge off the end of the capture
+instead. The DVB-T tool has no equivalent of the notch method's 200 kHz minimum-offset guard,
+and at this sample rate there may be no LO position that satisfies both constraints at once;
+a higher sample rate would open the room needed. Filed as a gap rather than fixed under time
+pressure: one unconfirmed measurement is evidence, not a second reference.
+
 ### What would settle it
 
 A GPS-disciplined oscillator, either as the HackRF's clock input or as a reference transmitter.

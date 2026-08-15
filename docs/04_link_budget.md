@@ -205,8 +205,12 @@ exactly the licensed carrier centre, which sits on a 100 kHz raster. Base statio
 frequency to 0.05 ppm. That should make a free, accurate reference, and it does not, for
 reasons that took a measurement campaign to establish.
 
-**Result: the error is negative and smaller than 1 ppm in magnitude, which is under 450 Hz at
-446 MHz. No tighter figure is claimed.**
+**This section does not end in a figure.** It ends in a pattern: every method tried, and every
+independent tool used to cross-check the methods, disagrees with the others by more than its
+own stated precision -- a few tenths of a ppm between LTE carriers, several ppm between DVB-T
+geometries, and finally a factor of thirty against an independent third-party tool. That
+pattern is itself the finding, and it is a stronger and more useful one than a false-precision
+number would have been -- see the end of this section for what it points to.
 
 ### The estimator had a 14 % scale error, found by closed-loop injection
 
@@ -291,12 +295,15 @@ stronger site, while 940.0 MHz stayed noisy — which is what "sensitive to the 
 subcarrier traffic, not to SNR" predicts, since traffic loading is independent of link budget.
 The two carriers still disagree, 0.126 ppm against a combined statistical uncertainty of
 0.051. This is consistent with everything above and does not replace it: four points per
-carrier is half the first campaign's depth, and the honest result stays what it was --
-**negative, under 1 ppm, bounded and not calibrated.**
+carrier is half the first campaign's depth, and everything the LTE notch method has found so
+far, on its own, stays what it was -- **negative, under 1 ppm, bounded and not calibrated.**
+That holds for this one method only; it does not survive contact with the independent checks
+below.
 
 A GSM FCCH burst was tried as an independent method with entirely different systematics and
 returned −1.65 ppm, disagreeing with all four notch measurements. That disagreement is
-unresolved and is itself a reason not to quote a figure.
+unresolved and is itself a reason not to quote a figure -- and, read forward, an early sign of
+the much larger disagreement the DVB-T and kalibrate cross-checks later in this section find.
 
 ### The DVB-T method worked, once, and does not settle it either
 
@@ -524,8 +531,12 @@ replacement for it.
   because those figures are not physical at this frequency — see `esm446/core/antenna.py`.
   Gain by substitution against a quarter-wave reference needs no extra equipment and has not
   been done.
-- **Frequency accuracy, to better than a bound.** Established as under 1 ppm and negative;
-  see the section above for why four cellular references disagree by more than that bound is
-  tight. Needs a disciplined oscillator.
+- **Frequency accuracy.** Not established at all, and the reason is now well evidenced rather
+  than assumed: every method and every independent tool tried disagrees with the others by
+  more than its own stated precision, up to a factor of thirty between this project's own
+  methods and a third-party tool. See the section above for the full campaign. That pattern is
+  itself evidence for an unreliable clock source ([#60](https://github.com/alesan121/esm446/issues/60)),
+  not for a small but hard-to-pin-down crystal error. Needs a disciplined oscillator, or a
+  terminated CLKIN port to test that hypothesis directly.
 - **Achieved image rejection.** Where the images fall is computed; how far down they are is
   not measured.

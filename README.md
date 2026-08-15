@@ -1,5 +1,7 @@
 # ESM-446
 
+[![Python CI](https://github.com/alesan121/esm446/actions/workflows/python-ci.yaml/badge.svg?branch=main)](https://github.com/alesan121/esm446/actions/workflows/python-ci.yaml)
+
 **A passive Electronic Support Measures node for the PMR446 band.**
 
 ![The band, with the node's detections](docs/figures/00_waterfall.png)

@@ -249,6 +249,41 @@ def test_the_vv_report_totals_row_adds_up(requirements: list[Requirement]) -> No
     assert int(match.group(1)) == len(requirements)
 
 
+#: "41 MET", "3 PARTIAL", "1 BLOCKED", with or without bold markers or a leading
+#: "of 45 requirements" -- every phrasing this project's prose has actually used for a
+#: requirement-status headline count.
+_STATUS_COUNT = re.compile(
+    r"(\d+)\s*(?:\*\*)?\s*(?:of\s+\d+\s+requirements\s+)?(MET|PARTIAL|BLOCKED)\b"
+)
+
+
+def test_no_document_quotes_a_stale_requirement_status_count(
+    requirements: list[Requirement],
+) -> None:
+    """The bug the V&V-report check above does not catch: agreement with only one document.
+
+    `test_the_vv_report_totals_match_the_requirements` checks the V&V report against the
+    requirements table, and passed throughout, but README.md carried its own, differently
+    phrased headline count ("42 of 45 requirements MET, 2 PARTIAL, 1 BLOCKED") that had gone
+    stale after a requirement's status changed -- one document silently agreeing with the
+    source of truth is not the same as every document agreeing with it.
+
+    So this checks every "N MET / N PARTIAL / N BLOCKED"-shaped headline in every document
+    against the true counts, not just the one the other test already reads.
+    """
+    counts = {status: 0 for status in VALID_STATUSES}
+    for requirement in requirements:
+        counts[requirement.status.split()[0].split("—")[0].strip()] += 1
+
+    for path in [Path("README.md"), *sorted(Path("docs").glob("*.md"))]:
+        text = path.read_text(encoding="utf-8")
+        for number, status in _STATUS_COUNT.findall(text):
+            assert int(number) == counts[status], (
+                f"{path.name} says {number} {status}, but the requirements table has "
+                f"{counts[status]} {status}"
+            )
+
+
 # --------------------------------------------------------------------------------------
 # Figures quoted in prose against figures the system measured
 # --------------------------------------------------------------------------------------

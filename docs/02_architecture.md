@@ -4,8 +4,10 @@
 **Version:** 1.0
 
 How the system is put together, what flows between the parts, what it costs in time and
-memory, and how it fails. Every figure here is measured on the development machine and
-reproduced by `esm446-bench`; none is a design target.
+memory, and how it fails. Every figure here is measured on the development machine --
+an Intel Core i5-3320M (2 cores / 4 threads) at 2.60 GHz with 7.6 GB RAM, a decade-old
+dual-core laptop chip, not a benchmarking rig -- and reproduced by `esm446-bench`; none is
+a design target.
 
 ---
 

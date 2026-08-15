@@ -184,7 +184,8 @@ a benchmark that gated one stage while the pipeline regressed.
 
 ## Performance
 
-Measured by `esm446-bench` on the development machine, at 2 MS/s over 160 channels:
+Measured by `esm446-bench` on the development machine -- an Intel Core i5-3320M
+(2 cores / 4 threads) at 2.60 GHz, not a benchmarking rig -- at 2 MS/s over 160 channels:
 
 | | CPU-s per signal second | Margin |
 |---|---|---|

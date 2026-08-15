@@ -301,12 +301,18 @@ figures are labelled as computed from datasheet values for a device that has not
 characterised. See [#41](https://github.com/alesan121/esm446/issues/41).
 
 **REQ-CAL-006 — frequency accuracy. PARTIAL, and the failure analysis is the result.**
-Consistency between captures is verified. Absolute accuracy is **bounded, not calibrated**:
-across four cellular carriers spanning 806 to 1835 MHz every measurement falls between -0.17
-and -0.62 ppm, so the receiver's error is negative and under a part per million, which is
-under 450 Hz at 446 MHz.
+Consistency between captures is verified. Absolute accuracy is **not established**: across
+four cellular carriers spanning 806 to 1835 MHz the LTE-notch method fell between -0.17 and
+-0.62 ppm, but the DVB-T band-edge method on the same receiver disagreed by several ppm, and
+an independent third-party tool (`kal-hackrf`, against real GSM base stations) put the figure
+at -36 to -38 ppm -- thirty times larger than either of this project's own methods. No single
+number is quoted, because none of them agree with each other by more than their own stated
+precision.
 
-No tighter figure is quoted, and the reason is worth more than a number would have been.
+No tighter figure is quoted, and the reason is worth more than a number would have been. That
+disagreement pattern is itself evidence for an unreliable clock reference
+([#60](https://github.com/alesan121/esm446/issues/60)), not for a small, fixed crystal error
+that different methods are each mismeasuring -- see §9 and `docs/04_link_budget.md`.
 
 The estimator first shipped had a **14 % scale error**. It took the centroid of the power
 deficit over a window fixed on the nominal frequency, and such a centroid contracts towards

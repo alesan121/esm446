@@ -398,6 +398,45 @@ peak-then-walk design has no defence against a comparably strong feature elsewhe
 window, which is a real gap in the tool and not something to patch under time pressure between
 one finding and the next.
 
+### An independent tool, against GSM, found a much larger number
+
+Everything above is this project's own code, measuring its own bias. `kal-hackrf`
+(kalibrate, Lackey 2010, HackRF port by scateu) is neither: a third-party tool with its own
+independent GSM FCCH burst detector, used here only to cross-check, not to replace anything.
+
+A scan of GSM-900 found seven real base stations from this location. Three were strong enough
+for the clock-offset mode to return a low reject count -- kalibrate reports how many burst
+candidates it discarded alongside the estimate, which is a built-in quality signal the tool's
+own output makes available:
+
+| channel | frequency | rejected of ~737 | offset | ppm |
+|---|---|---|---|---|
+| 119 | 958.8 MHz | 637 | −34.86 kHz | −36.36 |
+| 119 (repeat) | 958.8 MHz | 651 | −34.51 kHz | −35.99 |
+| 118 | 958.6 MHz | 268 | −13.62 kHz | −14.21 |
+| 104 | 955.8 MHz | 3 | −36.79 kHz | −38.49 |
+
+Channel 104's reject count -- 3, against 268 and 637 for the others -- marks it as the one
+measurement kalibrate itself is confident in, and it agrees with both channel 119 runs to
+within 2.5 ppm. Channel 118, the one with by far the worst reject count and the widest
+internal spread, is the outlier. Read that way, three independent readings converge on
+**roughly −36 to −38 ppm.**
+
+**That is thirty times larger than anything this project's own methods found tonight**, all of
+which stayed under 10 ppm. Both cannot be describing the same stable crystal error. Taken
+together with the LTE notch method's carrier-to-carrier disagreement (χ²/dof = 30) and the
+DVB-T method's on-channel-versus-off-channel disagreement (≈6 ppm), a receiver that reports a
+different frequency error depending on which independent tool, which geometry, or which
+session measures it is not a receiver with a stable, measurable ppm figure waiting to be
+found -- it is a receiver whose reference is not fixed. That is exactly what
+[#60](https://github.com/alesan121/esm446/issues/60) already proposed as a hypothesis, from a
+single false-positive CLKIN detection: if the HackRF's firmware re-evaluates and can switch
+its clock source at the start of every capture, and that evaluation is unreliable, different
+tools invoked in different sessions would each get a self-consistent answer *within* their own
+run and a different one from the next tool's run -- which is precisely the pattern above.
+This is corroborating evidence for that hypothesis, not confirmation of it: the decisive test
+is still the one #60 describes and this session could not run, terminating the CLKIN port.
+
 ### What would settle it
 
 A GPS-disciplined oscillator, either as the HackRF's clock input or as a reference transmitter.

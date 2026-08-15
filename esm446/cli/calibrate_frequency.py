@@ -45,6 +45,14 @@ logger = logging.getLogger(__name__)
 #: second at 20 MS/s, sixteen averages of the transform, and 32 MB.
 DEFAULT_SAMPLES = 4_000_000
 
+#: Refused above this. `average_spectrum` holds the raw array, a windowed copy and the FFT
+#: output at once, each the size of the capture -- roughly 32 bytes per sample at peak,
+#: measured directly: 190 million samples drove this tool to 6.9 GB resident on a 7.6 GB
+#: machine and had to be killed out of swap thrashing rather than left to find out whether it
+#: would recover. 50 million samples is a bit over 1.5 GB at that rate, which leaves headroom
+#: on a small machine without frequency accuracy ever depending on how much RAM is fitted.
+MAX_SAFE_SAMPLES = 50_000_000
+
 
 def _load(path: Path, sample_format: str, samples: int) -> np.ndarray:
     """Read the leading part of an interleaved IQ capture into complex baseband."""
@@ -93,6 +101,19 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", stream=sys.stderr)
     logging.getLogger().setLevel(logging.WARNING if args.json else logging.INFO)
+
+    if args.samples > MAX_SAFE_SAMPLES:
+        logger.error(
+            "calibrate: --samples %d exceeds the safety ceiling of %d. average_spectrum "
+            "holds the raw array, a windowed copy and the FFT output at once, each the size "
+            "of the request -- roughly 32 bytes per sample at peak. This was measured, not "
+            "guessed: 190 million samples drove this tool to 6.9 GB resident and swap "
+            "thrashing on a 7.6 GB machine. Lower --samples, or process the capture in "
+            "chunks if more averaging is genuinely needed.",
+            args.samples,
+            MAX_SAFE_SAMPLES,
+        )
+        return 1
 
     missing = [path for path in args.capture if not path.exists()]
     if missing:

@@ -262,6 +262,13 @@ class SoapySource(IQSource):
         # reading the wall clock is the right answer.
         self.start_time = time.time()
 
+        # Sample-loss accounting. v0's equivalent was `if sr.ret < 0: continue` -- silent,
+        # so a stream that spent an hour dropped on the floor looked identical to an hour of
+        # real silence in every downstream statistic. Every gap here is a real event with a
+        # timestamp and a size, not a number that only exists if someone thinks to log it.
+        self.overflow_count = 0
+        self.gaps: list[dict[str, float]] = []
+
         self._device = SoapySDR.Device({"driver": driver})
 
         supported = [float(rate) for rate in self._device.listSampleRates(SOAPY_SDR_RX, channel)]
@@ -296,10 +303,37 @@ class SoapySource(IQSource):
     def read(self, num_samples: int) -> np.ndarray | None:
         buffer = np.empty(num_samples, dtype=np.complex64)
         status = self._device.readStream(self._stream, [buffer], num_samples, timeoutUs=1_000_000)
-        if status.ret <= 0:
+
+        overflow_flag = getattr(self._soapy, "SOAPY_SDR_OVERFLOW", 4)
+        if status.ret > 0 and (status.flags & overflow_flag):
+            # The driver delivered samples but flagged a gap immediately before or after them
+            # -- the buffer we got is real, but it is not contiguous with what came before it.
+            self._record_gap(status.ret, overflow=True)
+        elif status.ret <= 0:
+            # No samples at all this call. status.ret is negative errno-style on a real
+            # failure, 0 on a timeout with nothing delivered -- both are a gap of unknown
+            # size, logged as such rather than silently retried.
             logger.warning("source: readStream returned %d", status.ret)
+            self._record_gap(0, overflow=(status.ret != 0))
             return np.empty(0, dtype=np.complex64)
+
         return buffer[: status.ret]
+
+    def _record_gap(self, samples_delivered: int, overflow: bool) -> None:
+        if overflow:
+            self.overflow_count += 1
+        self.gaps.append(
+            {
+                "timestamp": time.time(),
+                "samples_delivered": float(samples_delivered),
+                "overflow": float(overflow),
+            }
+        )
+
+    @property
+    def samples_lost_estimate(self) -> int:
+        """Overflow events counted, not sized -- SoapySDR does not report how much was lost."""
+        return self.overflow_count
 
     def close(self) -> None:
         stream = getattr(self, "_stream", None)

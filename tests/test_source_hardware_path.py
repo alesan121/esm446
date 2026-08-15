@@ -31,6 +31,7 @@ class FakeStatus:
     """What `readStream` returns: a count, or a negative error code."""
 
     ret: int
+    flags: int = 0
 
 
 @dataclass
@@ -41,6 +42,7 @@ class FakeDevice:
     sample_rates: list[float] = field(default_factory=lambda: [2e6, 8e6, 10e6, 20e6])
     calls: list[tuple] = field(default_factory=list)
     read_returns: int | None = None
+    read_flags: int = 0
     samples_per_read: complex = 0.5 + 0.25j
 
     def listSampleRates(self, direction: int, channel: int) -> list[float]:  # noqa: N802
@@ -68,7 +70,7 @@ class FakeDevice:
         returned = count if self.read_returns is None else self.read_returns
         if returned > 0:
             buffers[0][:returned] = self.samples_per_read
-        return FakeStatus(returned)
+        return FakeStatus(returned, flags=self.read_flags)
 
     def deactivateStream(self, stream: str) -> None:  # noqa: N802
         self.calls.append(("deactivateStream", stream))
@@ -88,6 +90,7 @@ def soapy(monkeypatch: pytest.MonkeyPatch) -> list[FakeDevice]:
     module = types.ModuleType("SoapySDR")
     module.SOAPY_SDR_RX = SOAPY_SDR_RX
     module.SOAPY_SDR_CF32 = SOAPY_SDR_CF32
+    module.SOAPY_SDR_OVERFLOW = 4
 
     def device(args: dict[str, str]) -> FakeDevice:
         made = FakeDevice(args=args)
@@ -245,6 +248,71 @@ def test_a_driver_error_yields_nothing_rather_than_raising(soapy) -> None:
 
     assert block is not None
     assert len(block) == 0
+
+
+# --------------------------------------------------------------------------------------
+# Sample-loss accounting -- v0's equivalent was `if sr.ret < 0: continue`, silently
+# --------------------------------------------------------------------------------------
+
+
+def test_a_clean_read_records_no_gap(soapy) -> None:
+    source = open_source()
+    source.read(4096)
+
+    assert source.overflow_count == 0
+    assert source.gaps == []
+
+
+def test_an_overflow_flagged_read_is_counted_even_though_samples_arrived(soapy) -> None:
+    """The driver can deliver a full buffer and still flag that a gap sits next to it.
+
+    Silently trusting a full-looking buffer here is exactly the class of bug this exists to
+    catch: the data is real, but it is not contiguous with what came before it, and every
+    downstream duty-cycle and duration figure needs to know that.
+    """
+    source = open_source()
+    soapy[0].read_flags = 4  # SOAPY_SDR_OVERFLOW
+
+    block = source.read(4096)
+
+    assert len(block) == 4096, "the samples that did arrive must still reach the caller"
+    assert source.overflow_count == 1
+    assert source.gaps[0]["overflow"] == 1.0
+
+
+def test_a_driver_error_is_recorded_as_a_gap_too(soapy) -> None:
+    source = open_source()
+    soapy[0].read_returns = -1
+
+    source.read(4096)
+
+    assert len(source.gaps) == 1
+    assert source.gaps[0]["samples_delivered"] == 0.0
+
+
+def test_a_timeout_with_nothing_delivered_is_a_gap_but_not_an_overflow(soapy) -> None:
+    """A timeout is not necessarily loss -- the band can be legitimately quiet -- but the
+    node's own accounting still needs to see that no data arrived for this call."""
+    source = open_source()
+    soapy[0].read_returns = 0
+
+    source.read(4096)
+
+    assert len(source.gaps) == 1
+    assert source.overflow_count == 0
+
+
+def test_gaps_accumulate_across_reads(soapy) -> None:
+    source = open_source()
+    soapy[0].read_flags = 4
+
+    source.read(4096)
+    source.read(4096)
+    source.read(4096)
+
+    assert source.overflow_count == 3
+    assert len(source.gaps) == 3
+    assert source.samples_lost_estimate == 3
 
 
 def test_live_capture_timestamps_from_the_clock(soapy) -> None:

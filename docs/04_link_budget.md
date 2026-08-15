@@ -356,6 +356,48 @@ compatible-but-not-confirming measurements are what this project has for DVB-T; 
 adequately averaged one is what would settle whether −0.14 ppm or −2.41 ppm is closer to the
 truth, and it needs more memory than this machine safely offers at 20 MS/s.
 
+### A properly averaged campaign found a third number, and a receiver artefact
+
+Processing a real capture in memory-bounded pieces rather than all at once -- the lesson of
+the incident above -- makes long averaging possible without the memory ceiling: 20 minutes at
+525 MHz, read as independent ~240 MB segments, each measured and released before the next is
+opened, peak resident memory 1.4 GB regardless of the campaign length.
+
+Doing this surfaced a receiver artefact this project had not seen before, because nothing
+before ran long enough to hit it: **a spur at exactly local-oscillator-minus-quarter-sample-rate**
+(525 − 5.000 = 520.000 MHz here, a suspiciously round baseband offset for a real transmission)
+that is comparably strong to the DVB-T block itself -- 24.6 dB against the channel's 24.4 dB
+in one segment -- and wins `_edge()`'s peak search close to half the time. Of 36 segments
+across the 20 minutes, 20 locked onto this artefact and were excluded on that basis, uniformly
+and before looking at what they would have measured, not after.
+
+The 16 that survived:
+
+| | value |
+|---|---|
+| span | 19.9 minutes |
+| mean offset | −3230.7 Hz |
+| standard error of the mean | ±38.9 Hz |
+| in ppm | **−6.10 ± 0.07 ppm** |
+| occupied width, mean ± std | 7620.3 ± 0.5 kHz (expected 7610) |
+| drift over the campaign | −10.8 Hz/min, not significant against the point-to-point scatter |
+
+That is the tightest statistical uncertainty any frequency measurement in this project has
+produced. **It is not reported as an improved figure, because it disagrees with the on-channel
+−0.14 ppm measurement by roughly 6 ppm** -- thirty times either measurement's own stated
+uncertainty. Both cannot be right. Screening out one identified artefact does not mean no
+others remain in either geometry, and an on-channel capture with the receiver's own leakage
+sitting exactly at the point being measured is exactly the kind of setup this project has
+repeatedly found to bias results in ways that are not obvious until measured. Which of the two
+numbers -- or neither -- is closer to the truth is not established here.
+
+**The honest position is unchanged from before this campaign, and is now better evidenced
+rather than settled:** the DVB-T method, like the LTE notch method, produces numbers that
+depend on the measurement geometry in ways not yet fully characterised. `measure_centre()`'s
+peak-then-walk design has no defence against a comparably strong feature elsewhere in the
+window, which is a real gap in the tool and not something to patch under time pressure between
+one finding and the next.
+
 ### What would settle it
 
 A GPS-disciplined oscillator, either as the HackRF's clock input or as a reference transmitter.

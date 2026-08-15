@@ -168,3 +168,40 @@ def test_the_demonstration_writes_the_artefacts_it_advertises(tmp_path: Path) ->
     assert (tmp_path / "waterfall.png").stat().st_size > 10_000
     page = (tmp_path / "dashboard.html").read_text(encoding="utf-8")
     assert "<html" in page and "never communication content" in page
+
+
+# --------------------------------------------------------------------------------------
+# The printed report -- checked separately from the scenario data it describes, because a
+# formatting bug can misstate a fact the underlying data has right. This one did: the
+# receiver line hardcoded "PMR446 channel 8" regardless of where the scenario was actually
+# tuned, on a scenario deliberately offset-tuned *away* from channel 8 (see
+# test_the_shipped_scenario_is_not_tuned_to_a_channel for why that matters), so every run of
+# the demonstration printed a channel claim that contradicted the project's own reasoning.
+# --------------------------------------------------------------------------------------
+
+
+def test_the_receiver_line_does_not_claim_a_channel_for_an_off_grid_centre(capsys) -> None:
+    from esm446.cli.demo import print_report
+
+    scenario = small_scenario()  # centred at bands.DEFAULT_CENTRE_HZ, off the nominal grid
+    reports, truth, result, elapsed = run_demo(scenario)
+
+    print_report(scenario, reports, truth, result, elapsed)
+
+    out = capsys.readouterr().out
+    assert "channel 8" not in out
+    assert "offset-tuned, off the nominal grid" in out
+
+
+def test_the_receiver_line_names_the_real_channel_when_centred_on_one(capsys) -> None:
+    import dataclasses
+
+    from esm446.core.bands import channel_frequency
+    from esm446.cli.demo import print_report
+
+    scenario = dataclasses.replace(small_scenario(), centre_frequency=float(channel_frequency(4)))
+    reports, truth, result, elapsed = run_demo(scenario)
+
+    print_report(scenario, reports, truth, result, elapsed)
+
+    assert "PMR446 channel 4" in capsys.readouterr().out

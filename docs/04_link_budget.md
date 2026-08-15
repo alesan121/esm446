@@ -311,6 +311,73 @@ establishes is genuinely useful: whatever the crystal is doing, it is doing it a
 a part per million, which is far better than the specification permits and small enough not to
 disturb emitter grouping, where the tolerance is 3 kHz.
 
+## Measured: a real off-grid emitter, found indoors and confirmed by retune
+
+A two-hour capture at the shipped default configuration (446.593750 MHz, LNA 32 / VGA 20),
+taken indoors -- a new environment for this project, everything before it was outdoors --
+surfaced a peak just below 446.000000 MHz, six kilohertz below the first PMR446 channel
+centre and therefore off-grid rather than on any nominal channel.
+
+Retuning the local oscillator to 446.093750 MHz is the same test used throughout this
+project to separate a real signal from a receiver artefact, and it gives a clean answer:
+
+| local oscillator | peak stayed at | verdict |
+|---|---|---|
+| 446.593750 MHz | 445.999377 MHz | — |
+| 446.093750 MHz | (present, same feature) | **unchanged: real** |
+
+The strongest peak in each capture is not this one -- it is the receiver's own local-oscillator
+leakage, and it moved with the retune exactly as documented above (446.593750 -> 446.093750
+MHz), which is what confirms the method is working rather than coincidental.
+
+The node's own detector, run over the full two hours (`esm446-node --file`, the shipped
+CFAR pipeline, not a bespoke script), found the same emitter independently and reports it
+with metadata the manual spectral check does not give:
+
+| timestamp offset | frequency | duration | SNR | peak deviation |
+|---|---|---|---|---|
+| 44.5 min | 445.999377 MHz | 110 ms | 2.8 dB | 12.27 kHz |
+| 70.2 min | 445.999394 MHz | 125 ms | 3.1 dB | 12.20 kHz |
+
+Both reports agree on frequency to 17 Hz, 25.7 minutes apart, which is consistent with one
+intermittent transmitter rather than two coincidental events. Both are marked `off-grid` and
+`UNKNOWN` (no CTCSS), correctly: it is not a nominal PMR446 channel and carries no cooperative
+identification tone.
+
+**These are also the only two emissions the detector reported over the entire two hours.**
+At the CFAR design point of 1e-8 per cell, over 160 channels at a 25 kHz frame rate for
+7200 seconds -- 2.88e10 cells -- zero false alarms were observed: both detections attribute
+to the one confirmed real emitter, not to noise. That is a much longer, cleaner run than
+what REQ-FUN-003 could previously cite, and it was taken indoors, a harder environment than
+the outdoor tests that found an 8e-6 crossing rate at high gain. It does not raise the
+design point to a proven figure -- absence of a false alarm in one finite run bounds the
+rate, it does not measure it -- but it is the strongest evidence yet that the shipped
+default (LNA 32 / VGA 20) earns its 9 dB of foregone sensitivity.
+
+What the 445.999 MHz emission is has not been established, and is not guessed at here: an
+indoor residential environment has far more candidate sources than an outdoor PMR446 test, and
+attributing it to any one of them without evidence would be exactly the kind of claim this
+document exists to avoid making. It is reported as what was measured -- a real, off-grid,
+persistent emission -- which is the survey capability `esm446.analysis.eob` and REQ-FUN-007
+exist for.
+
+## Measured: real-world throughput runs higher than the synthetic benchmark
+
+The same two-hour run gives a second figure for free: `esm446-node` logs its own cost on
+completion, over real signal rather than the synthetic noise `esm446-bench` uses. It spent
+2725.3 CPU-seconds on 7200.0 signal-seconds -- about 26 % more per signal-second than the
+synthetic benchmark's median (see `docs/02_architecture.md`), a single real run against a
+median of five, not two values for the same measurement.
+
+Worth taking at face value rather than explained away: two real detections each cost
+tracking and identification work the synthetic benchmark's quiet band never exercises, and
+the CFAR reference-cell arithmetic runs on real receiver statistics rather than the
+benchmark's synthetic ones. REQ-PER-001 requires at least 2x real-time margin; this run
+still clears 2.6x, comfortably inside it but with less headroom than the synthetic figure
+implies. One run carries no error bar -- the project's own measured run-to-run variance is
+up to 45 % -- so this is a data point in the same direction as the benchmark, not a
+replacement for it.
+
 ## What remains unmeasured
 
 - **Absolute power.** Blocked on [#41](https://github.com/alesan121/esm446/issues/41).

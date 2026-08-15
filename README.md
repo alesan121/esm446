@@ -20,8 +20,8 @@ attached.
 | Sensitivity ripple across a bin | **6.02 dB** worst case, stated rather than hidden |
 | False alarm rate | **0.90–1.12e-3** against 1e-3 on synthetic noise; **2.5e-7** on real receiver noise at a 1e-8 design point |
 | Credible interval coverage | **95.3 %** achieved for the 95 % ring |
-| Requirements | **42 MET**, 2 PARTIAL, 1 BLOCKED, traceability enforced by a test |
-| Tests | **502**, 93 % coverage |
+| Requirements | **41 MET**, 3 PARTIAL, 1 BLOCKED, traceability enforced by a test |
+| Tests | **529**, 92 % coverage |
 
 It records **signal metadata, never communication content** — see
 [`docs/06_legal_ethics.md`](docs/06_legal_ethics.md). That is not a disclaimer bolted on

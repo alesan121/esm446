@@ -452,10 +452,13 @@ That is the same class of instrument the power calibration needs
 measurement is limited by not having a traceable reference, not by the technique.
 
 The tooling stays in the repository because it is now verified — unity gain, tilt immunity,
-noise rejection, and a refusal to measure a contaminated capture — and because the bound it
-establishes is genuinely useful: whatever the crystal is doing, it is doing it at well under
-a part per million, which is far better than the specification permits and small enough not to
-disturb emitter grouping, where the tolerance is 3 kHz.
+noise rejection, and a refusal to measure a contaminated capture. What it does **not**
+establish, contrary to what an earlier version of this section claimed before the kalibrate
+cross-check above existed, is a bound on the crystal error: kalibrate's −36 to −38 ppm is
+thirty times past any figure this project's own methods produced, so "whatever the crystal is
+doing, it is under a part per million" is exactly the kind of claim this project's own later
+work disproved. No bound is claimed. The tool's verified correctness and the receiver's
+unverified reference are two separate facts, and only the first one is settled.
 
 ## Measured: a real off-grid emitter, found indoors and confirmed by retune
 

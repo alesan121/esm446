@@ -23,7 +23,7 @@ attached.
 | False alarm rate | **0.90–1.12e-3** against 1e-3 on synthetic noise; **2.5e-7** on real receiver noise at a 1e-8 design point |
 | Credible interval coverage | **95.3 %** achieved for the 95 % ring |
 | Requirements | **41 MET**, 3 PARTIAL, 1 BLOCKED, traceability enforced by a test |
-| Tests | **529**, 92 % coverage |
+| Tests | **544**, 95 % coverage |
 
 It records **signal metadata, never communication content** — see
 [`docs/06_legal_ethics.md`](docs/06_legal_ethics.md). That is not a disclaimer bolted on
@@ -48,7 +48,7 @@ The pipeline is identical for live capture and for replay, so everything below r
 clone with nothing plugged in.
 
 ```bash
-poetry run pytest                    # 502 tests
+poetry run pytest                    # 544 tests
 poetry run esm446-bench              # throughput against the v0 baseline
 poetry run esm446-node --file capture.cf32
 ```

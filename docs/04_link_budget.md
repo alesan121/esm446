@@ -307,6 +307,15 @@ cut for the DVB-T band (12.9 cm, a quarter wave at 580 MHz) instead of 446 MHz. 
 wide, but consistent with the surviving LTE reference (806.0 MHz, −0.343 ± 0.009 ppm) and with
 the overall bound.
 
+![The DVB-T block on channel 28, flat top and sharp edges landing exactly on the shaded
+occupied bandwidth](figures/08_dvbt_channel28_spectrum.png)
+
+*Unlike the other figures in this document, this one is not reproduced by `make report`: it
+is a single spectrum from the capture this measurement was made on, not something a
+simulation can stand in for. Kept as a committed image for that reason, with the campaign
+that produced it described here rather than a script that regenerates it from data nobody
+without this exact hardware session has.*
+
 The repeatability check this project applies to every frequency method -- retune and
 re-measure -- was attempted three times before it produced a real number, and each failure is
 worth recording because each pinned down what was actually wrong.

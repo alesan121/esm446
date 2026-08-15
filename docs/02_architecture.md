@@ -178,6 +178,15 @@ answer was to stop having two processes rather than to lock the files.
 Configuration is environment-driven through `pydantic-settings` and validated at import.
 Nothing else in the codebase calls `os.getenv`.
 
+The software has no dependency on a specific distribution — Poetry, Python 3.13 and a
+SoapySDR HackRF module are what it actually needs. Hardware validation for this project was
+done on [DragonOS](https://sourceforge.net/projects/dragonos-focal/) FocalX R37.1 (Ubuntu
+22.04 LTS base), a
+distribution purpose-built for SDR work: it ships the HackRF driver stack, GNU Radio, and a
+wide independent-tool ecosystem preinstalled and pre-integrated, which is what made an
+independent cross-check against this project's own frequency measurements possible without a
+separate build — see the `kal-hackrf` (kalibrate) comparison in `docs/04_link_budget.md`.
+
 ---
 
 ## 8. What is not in this architecture, and why

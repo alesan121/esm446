@@ -329,11 +329,22 @@ def figure_detection_probability(results: dict[str, Any]) -> None:
             markersize=3,
             linewidth=1.2,
             color=colours[label],
-            label=f"{label} (real noise)",
+            label=f"{label} (real noise, quantised -- unreliable, see report)",
         )
     axis.axhline(0.5, color="grey", linestyle=":", linewidth=1)
     axis.set_ylim(-0.02, 1.02)
-    axis.legend(fontsize=7)
+    axis.legend(fontsize=6.5)
+    if real_curves:
+        axis.text(
+            0.02,
+            0.02,
+            "real-noise curves: open antenna port, ~2-bit ADC occupancy -- not a valid\n"
+            "noise-floor measurement, see docs/05_vv_report.md §4",
+            transform=axis.transAxes,
+            fontsize=6,
+            color="tab:red",
+            va="bottom",
+        )
     _style(
         axis,
         "REQ-FUN-004 — probability of detection at P_fa 1e-8",

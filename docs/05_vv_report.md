@@ -69,14 +69,19 @@ the worst case is the same −6 dB point that buys the 94 dB rejection above. **
 are the same design decision seen from either side.**
 
 The summed-pair curve shows why the obvious fix returns less than it appears to: the split
-energy does come back, 6.02 dB becoming 3.01 dB, but the noise in the second bin comes with
-it. The detection gain is 2.07 dB from reduced variance, not 3 dB from recovered energy, and
-enabling it made the recorded captures worse — see [`../esm446/core/detector.py`](../esm446/core/detector.py)
-and the closing note in §9.
+energy does come back, 6.02 dB becoming 3.01 dB in raw response, but the sum is **incoherent**
+(power, not phase-corrected amplitude — `paired_power = power + np.roll(power, -1)` in
+`esm446/core/detector.py`), so the noise in the second bin comes back with it in the same
+proportion. The measured detection gain at the worst offset is **1.25 dB**, not 3 dB, costing
+0.25–0.38 dB everywhere else for splitting the false-alarm budget across two tests — and
+enabling it made the recorded captures worse, breaking a real attribution. It ships
+**implemented, verified, and off** — see
+[`../esm446/core/detector.py`](../esm446/core/detector.py) and the closing note in §9.
 
-**So the honest sensitivity figure for this system carries a 6 dB ripple.** Quoting the
-on-centre value alone would overstate it by that much, for exactly the emitters it is least
-likely to already know about.
+**So the honest sensitivity figure for this system carries the full 6 dB ripple, not 3 dB:**
+the mitigation is not in the shipped detection path, `detect_pairs` defaults to `False`, and
+quoting the on-centre value alone would overstate the system by 6 dB for exactly the emitters
+it is least likely to already know about.
 
 ---
 
@@ -163,23 +168,43 @@ not a wideband time-domain RMS, which would be inflated by the local-oscillator 
 and would understate every SNR in the sweep. 52 overlapping windows across the 1.1-second
 vector, at each of 23 SNR points, two offsets.
 
-**The result answers the concern the wrong way round: real receiver noise reaches P<sub>d</sub>
-= 0.5 at a *lower* SNR than synthetic noise does, not a higher one — 11.0 dB against 15.0 dB
-on-centre, 17.0 dB against 20.0 dB off-centre.** The detector is not deaf. Read together with
-the near-zero real P<sub>fa</sub>, the coherent explanation is that this receiver's real noise,
-after channelising, is *less* heavy-tailed than the exponential-power distribution the CFAR
-threshold factor is derived for — tighter around its own floor, so both fewer noise-only
-crossings and more reliable signal-plus-noise crossings follow from the same cause. That
-explanation is plausible and consistent with what was measured, but it is **not confirmed**:
-it would take a measured amplitude distribution of the real noise, compared against the
-exponential assumption directly, to settle it, and that has not been done.
+The result came out the wrong way round: real receiver noise reached P<sub>d</sub> = 0.5 at a
+*lower* SNR than synthetic noise, not a higher one — 11.0 dB against 15.0 dB on-centre, 17.0 dB
+against 20.0 dB off-centre. That was checked before it was trusted, and it does not survive the
+check.
 
-**What this does not cover.** The vector used is receiver-only noise with the antenna
-disconnected — the easy case, not the harder one. `ambient_noise_lna32_vga40.cs8`, band noise
-at high gain with a real antenna and no emission, is the vector that originally exposed the
-held-noise-estimate defect and is neither Gaussian nor stationary; repeating this sweep
-against it, at the gain it was captured at, is the next real-noise validation this project
-needs and was not run in this session for lack of time, not because it was judged unnecessary.
+**The vector is quantisation-limited, not thermal-noise-limited, and the 11.0/17.0 dB figures
+are retracted.** `receiver_noise_lna32_vga20.cs8` was captured with the antenna **disconnected
+and the SMA port open** — not terminated in 50 Ω. An open port reflects essentially all
+incident energy rather than presenting a matched thermal source, and at LNA 32 / VGA 20 the
+result barely registers on an 8-bit ADC: the raw samples occupy only **5 of 256 possible
+codes** (range −2 to +2, roughly 2 bits), against 81 codes (roughly 6.3 bits) for
+`ambient_noise_lna32_vga40.cs8`, the antenna-connected vector at higher gain. A
+Kolmogorov–Smirnov test against a Gaussian rejects overwhelmingly for the open-port vector
+(D = 0.522) and far less so for the antenna-connected one (D = 0.133). A signal quantised to
+five discrete codes is not well described by *any* continuous noise model, exponential or
+Gaussian, and OS-CFAR's order statistic over reference cells drawn from five discrete levels
+behaves nothing like the theory it was derived from. That is almost certainly what the 4 dB
+gap actually measured, not a property of this receiver's real noise being unusually favourable.
+
+This is the same pattern this project has retracted twice already this session — a number
+measured under one physical condition, stated as if it held in general — caught this time
+before publication only because the result was implausible enough to interrogate rather than
+because the measurement declared its own conditions. `tests/data/receiver_noise_lna32_vga20.cs8`
+is being repurposed here for something its own committed description never claimed: it exists
+to prove the detector reports nothing on receiver noise alone (`test_pure_receiver_noise_produces_no_false_alarms`,
+still correct, still standing), not to characterise an amplitude distribution.
+
+**What this leaves open.** Whether real thermal noise — antenna connected or port properly
+terminated in 50 Ω — reaches P<sub>d</sub> = 0.5 above, below, or at the synthetic-noise SNR is
+genuinely not known. `ambient_noise_lna32_vga40.cs8` is antenna-connected and far better
+quantised (6.3 bits), but it was captured at VGA 40, not the shipped VGA 20, so it is not a
+direct substitute. Repeating this sweep needs one of: a receiver-noise capture at the shipped
+gain with the port terminated in 50 Ω (pending — see the note on `receiver_noise_lna32_vga20.cs8`'s
+open-port condition), or a fresh capture at LNA 32 / VGA 20 with the antenna connected. Neither
+has been done. The synthetic-noise curve (15.0 / 20.0 dB) is what this system's real-noise
+detection performance should be checked against once one of those exists — not the 11.0 / 17.0
+dB pair above, which is now documented as a measurement of quantisation, not of the receiver.
 
 ---
 

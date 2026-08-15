@@ -39,7 +39,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import subprocess
+import subprocess  # nosec B404 -- fixed argv only, no shell, used throughout this file
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -115,7 +115,9 @@ def check_disk(context: str) -> bool:
 
 def firmware_version() -> str:
     try:
-        out = subprocess.run(["hackrf_info"], capture_output=True, text=True, timeout=10).stdout
+        out = subprocess.run(  # nosec -- fixed argv, no shell, no untrusted input
+            ["hackrf_info"], capture_output=True, text=True, timeout=10
+        ).stdout
         for line in out.splitlines():
             if "Firmware Version" in line:
                 return line.split(":", 1)[1].strip()
@@ -175,7 +177,9 @@ def capture(path: Path, seconds: float, lna_db: float, vga_db: float) -> dict:
         str(num_samples),
         "-B",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=seconds + 60)
+    result = subprocess.run(  # nosec -- argv built from numeric config, no shell
+        cmd, capture_output=True, text=True, timeout=seconds + 60
+    )
     overruns = 0
     for line in result.stderr.splitlines():
         if "overruns" in line and "longest" in line:
@@ -361,7 +365,9 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
 
 def schedule_safety_shutdown() -> None:
     try:
-        subprocess.run(["shutdown", "-h", f"+{SAFETY_SHUTDOWN_MINUTES}"], check=True)
+        subprocess.run(  # nosec -- fixed argv, no shell, no untrusted input
+            ["shutdown", "-h", f"+{SAFETY_SHUTDOWN_MINUTES}"], check=True
+        )
         logger.info("safety shutdown scheduled: +%d minutes", SAFETY_SHUTDOWN_MINUTES)
     except Exception as exc:  # noqa: BLE001
         logger.error("could not schedule safety shutdown: %s -- refusing to run unattended", exc)
@@ -369,10 +375,10 @@ def schedule_safety_shutdown() -> None:
 
 
 def clean_shutdown() -> None:
-    subprocess.run(["shutdown", "-c"], check=False)
-    subprocess.run(["sync"], check=False)
+    subprocess.run(["shutdown", "-c"], check=False)  # nosec
+    subprocess.run(["sync"], check=False)  # nosec
     logger.info("clean shutdown: now")
-    subprocess.run(["shutdown", "-h", "now"], check=False)
+    subprocess.run(["shutdown", "-h", "now"], check=False)  # nosec
 
 
 def main() -> int:

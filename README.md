@@ -20,7 +20,7 @@ attached.
 | Throughput | **0.30** CPU-s per signal second — 3.4× real time, against v0's **6.9** |
 | Adjacent-channel rejection | **92.9 dB** measured on a modulated emitter |
 | Sensitivity ripple across a bin | **6.02 dB** worst case, stated rather than hidden |
-| False alarm rate | **0.90–1.12e-3** against 1e-3 on synthetic noise; **2.5e-7** on real receiver noise at a 1e-8 design point |
+| False alarm rate | **0.90–1.12e-3** against 1e-3 on synthetic noise; **zero** over 2.88e10 cells on real receiver noise at the shipped default (two-hour indoor run), against a 1e-8 design point |
 | Credible interval coverage | **95.3 %** achieved for the 95 % ring |
 | Requirements | **41 MET**, 3 PARTIAL, 1 BLOCKED, traceability enforced by a test |
 | Tests | **544**, 95 % coverage |

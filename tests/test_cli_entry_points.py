@@ -244,3 +244,57 @@ def test_the_extractor_normalises_before_quantising(tmp_path: Path) -> None:
 
     written = np.fromfile(iq_path, dtype=np.int8).astype(np.float32).view(np.complex64)
     assert np.abs(written).max() > 120
+
+
+# --------------------------------------------------------------------------------------
+# The command line itself -- extract() and write_vector() were tested above, but main()
+# never was: the argument parsing, and the metadata it assembles around the two, had no
+# coverage at all before this.
+# --------------------------------------------------------------------------------------
+
+
+def test_extract_vector_cli_writes_the_iq_and_metadata_files(tmp_path: Path) -> None:
+    capture = write_capture(tmp_path / "capture.cs8")
+    output = tmp_path / "vector"
+
+    code = extract_vector.main(
+        [
+            str(capture),
+            "--output",
+            str(output),
+            "--duration",
+            "0.05",
+            "--source-centre",
+            "446593750.0",
+            "--source-rate",
+            "2000000.0",
+            "--note",
+            "cli test",
+        ]
+    )
+
+    assert code == 0
+    assert output.with_suffix(".cs8").exists()
+    payload = json.loads(output.with_suffix(".json").read_text())
+    assert payload["note"] == "cli test"
+    assert payload["source"] == "capture.cs8"
+    assert payload["centre_hz"] == extract_vector.VECTOR_CENTRE_HZ
+    assert payload["sample_rate_hz"] == extract_vector.VECTOR_SAMPLE_RATE_HZ
+    assert payload["num_channels"] == 40
+    # The capture's own mtime minus the offset, not when the extraction ran -- so a
+    # replayed vector reports when the signal happened, not when it was cut out.
+    assert payload["start_time"] == pytest.approx(capture.stat().st_mtime, abs=1.0)
+
+
+def test_extract_vector_cli_defaults_to_the_offset_tuned_centre(tmp_path: Path) -> None:
+    """--source-centre defaults to bands.DEFAULT_CENTRE_HZ, the node's own operating point."""
+    from esm446.core import bands
+
+    capture = write_capture(tmp_path / "capture.cs8")
+    output = tmp_path / "vector"
+
+    code = extract_vector.main([str(capture), "--output", str(output), "--duration", "0.05"])
+
+    assert code == 0
+    payload = json.loads(output.with_suffix(".json").read_text())
+    assert payload["source_centre_hz"] == float(bands.DEFAULT_CENTRE_HZ)

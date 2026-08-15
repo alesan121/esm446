@@ -308,17 +308,44 @@ wide, but consistent with the surviving LTE reference (806.0 MHz, −0.343 ± 0.
 the overall bound.
 
 The repeatability check this project applies to every frequency method -- retune and
-re-measure -- **could not be completed**, and the reason is worth recording rather than
-hiding: at 10 MS/s, a 3.8 MHz half-channel needs the local oscillator within about 1 MHz of
-the channel centre to keep both edges inside the Nyquist window, and that is too close for
-the receiver's own local-oscillator leakage to stay clear of the fitted region. One retune
-attempt landed the leakage spur inside the analysis window and returned an edge-agreement of
-±405 kHz -- obvious nonsense, correctly not mistaken for a measurement. A second attempt
-moved far enough to clear the leakage and lost a channel edge off the end of the capture
-instead. The DVB-T tool has no equivalent of the notch method's 200 kHz minimum-offset guard,
-and at this sample rate there may be no LO position that satisfies both constraints at once;
-a higher sample rate would open the room needed. Filed as a gap rather than fixed under time
-pressure: one unconfirmed measurement is evidence, not a second reference.
+re-measure -- was attempted three times before it produced a real number, and each failure is
+worth recording because each pinned down what was actually wrong.
+
+**`_edge()` starts from the spectrum's global peak and walks outward**, so the failure mode is
+not "too close to a fitted window" but simpler and sharper: if the receiver's own
+local-oscillator leakage lands *inside the channel's own occupied bandwidth*, it becomes the
+peak the edge-search starts from, and the result is nonsense. At 10 MS/s, retuning 2 MHz put
+the leakage at 528 MHz -- inside the 526.19-533.8 MHz occupied span -- and returned an
+edge-agreement of ±405 kHz, correctly not mistaken for a measurement. Retuning 4 MHz moved the
+leakage clear of the channel but also moved the channel's low edge outside the ±5 MHz Nyquist
+window, and the width guard correctly refused a truncated block.
+
+At 10 MS/s no local-oscillator position satisfies both constraints (leakage outside the
+channel, both edges inside Nyquist) at once. **20 MS/s does**, and a capture at 525 MHz --
+5 MHz off-channel, comfortably outside both the occupied span and short of the Nyquist edge --
+finally gave a second real measurement: −2.41 ppm, edge-agreement ±2191 Hz.
+
+That is not a clean confirmation of the on-channel −0.14 ppm, and it is reported as what it
+is rather than rounded up to one: the two are compatible only because ±2191 Hz is a wide
+uncertainty (±4.1 ppm at 530 MHz), not because they agree tightly. The reason is the sample
+count, not the geometry fix. Widening the analysis to hold everything `average_spectrum`
+builds in memory -- the raw array, the windowed copy, and the FFT output, each the size of the
+capture -- means memory scales directly with sample count, not with the FFT size. 90 million
+samples (nine seconds at 10 MS/s) is what produced the tight −0.14 ppm figure and used most of
+this machine's 7.6 GB; **190 million samples at 20 MS/s drove it to 6.9 GB resident and into
+swap thrashing**, and was killed rather than left to find out whether it would recover. Sixteen
+million samples (0.8 s) is what actually ran, at a fraction of the averaging the first
+measurement had, which is the whole difference in precision. `esm446-calibrate-frequency`
+defaults to four million samples for exactly this reason; overriding it without checking
+memory headroom first is the mistake here, not the tool.
+
+The DVB-T tool still has no equivalent of the notch method's 200 kHz minimum-offset guard, and
+now has a second, sharper requirement it does not check either: the local oscillator must
+clear the channel's own occupied bandwidth, not just sit some fixed distance from centre. Both
+are gaps in the tool, filed rather than patched here under time pressure. Two real, mutually
+compatible-but-not-confirming measurements are what this project has for DVB-T; a third,
+adequately averaged one is what would settle whether −0.14 ppm or −2.41 ppm is closer to the
+truth, and it needs more memory than this machine safely offers at 20 MS/s.
 
 ### What would settle it
 

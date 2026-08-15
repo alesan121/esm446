@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+from esm446.core.bands import channel_at
 from esm446.core.channelizer import ChannelizerConfig
 from esm446.core.detector import CfarConfig
 from esm446.core.node import EsmNode
@@ -73,7 +74,9 @@ def print_report(scenario: Scenario, reports, truth, result, elapsed: float) -> 
     print(f"{'=' * 78}\n")
 
     print("Receiver")
-    print(f"  centre           {scenario.centre_frequency / 1e6:.6f} MHz (PMR446 channel 8)")
+    channel = channel_at(scenario.centre_frequency)
+    label = f"PMR446 channel {channel}" if channel else "offset-tuned, off the nominal grid"
+    print(f"  centre           {scenario.centre_frequency / 1e6:.6f} MHz ({label})")
     print(f"  sample rate      {scenario.sample_rate / 1e6:.3f} MS/s, 160 channels of 12.5 kHz")
     print(f"  noise figure     {chain.noise_figure_db:.2f} dB with a 20 dB external LNA")
     print(f"  MDS              {chain.minimum_detectable_signal_dbm(12_500.0):.1f} dBm\n")

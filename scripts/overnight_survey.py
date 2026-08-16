@@ -72,7 +72,9 @@ logger = logging.getLogger("overnight_survey")
 # --------------------------------------------------------------------------------------
 
 MIN_FREE_GB = 50.0
-ANTENNA_DESCRIPTION = "telescopic, extended to full length, near window"
+ANTENNA_DESCRIPTION = (
+    "telescopic, extended to full length, indoors near a window, vertical, pointing at the sky"
+)
 
 SAMPLE_RATE_HZ = 2_000_000.0
 CENTRE_HZ = float(bands.DEFAULT_CENTRE_HZ)
@@ -88,7 +90,7 @@ TOTAL_BUDGET_S = 9.25 * 3600.0
 # C3 runs at the shipped default -- the operating point the rest of this project's figures
 # already describe.
 C3_LNA_DB = 32.0
-C3_VGA_DB = 20.0
+C3_VGA_DB = 40.0
 C3_CHUNK_SECONDS = 240.0
 
 # Absolute fallback: fires even if this script hangs. Comfortably past TOTAL_BUDGET_S plus

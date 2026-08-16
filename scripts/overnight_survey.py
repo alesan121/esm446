@@ -288,6 +288,7 @@ def run_c2(out_dir: Path, heartbeat: Callable[[str, int], None] | None = None) -
     results = []
     total = len(C2_LNA_VALUES) * len(C2_VGA_VALUES)
     completed = 0
+    consecutive_failures = 0
 
     for lna in C2_LNA_VALUES:
         for vga in C2_VGA_VALUES:
@@ -301,8 +302,28 @@ def run_c2(out_dir: Path, heartbeat: Callable[[str, int], None] | None = None) -
 
             outcome = capture(iq_path, C2_SECONDS_PER_POINT, lna, vga)
             if not outcome["completed"]:
-                logger.error("C2: %s failed to capture (rc=%s)", label, outcome["returncode"])
+                consecutive_failures += 1
+                logger.error(
+                    "C2: %s failed to capture (rc=%s), %d consecutive failures",
+                    label,
+                    outcome["returncode"],
+                    consecutive_failures,
+                )
+                # Same failure this project already had in C3, found the hard way: a
+                # disconnected device fails fast and repeatedly, and C2's combinations are
+                # cheap enough (30s each) that spinning through the remaining ones with no
+                # delay could burn through dozens in well under a minute. Last night this
+                # happened to land on the last 2 of 36 points and nobody noticed the gap in
+                # protection -- it was luck of where in the sweep the disconnect fell, not
+                # a property of C2 being safe.
+                if consecutive_failures >= 20:
+                    logger.error(
+                        "C2: %d consecutive capture failures, giving up", consecutive_failures
+                    )
+                    return {"points": results, "aborted": "device unavailable"}
+                time.sleep(min(2 ** min(consecutive_failures, 6), 60))
                 continue
+            consecutive_failures = 0
 
             raw = np.fromfile(iq_path, dtype=np.int8)
             code_min, code_max = int(raw.min()), int(raw.max())
@@ -655,6 +676,18 @@ def main() -> int:
             write_status(
                 state="disk_guard_tripped",
                 phase="c2_gain_sweep",
+                started_at=started_at,
+                chunks_completed=len(summary["c2"]["points"]),
+            )
+            return 1
+        if summary["c2"].get("aborted") == "device unavailable":
+            # Don't let C3 start: it would open onto the same missing hardware and fail
+            # every chunk from the first one, for the whole budget, before the backoff
+            # inside run_c3 even gets a chance to matter.
+            write_status(
+                state="aborted_phase_c2_gain_sweep",
+                phase="c2_gain_sweep",
+                phase_progress="device unavailable after repeated capture failures",
                 started_at=started_at,
                 chunks_completed=len(summary["c2"]["points"]),
             )

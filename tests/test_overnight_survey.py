@@ -187,3 +187,61 @@ def test_successive_chunks_get_distinct_zero_padded_filenames(mod, tmp_path: Pat
 
     names = sorted(p.name for p in (tmp_path / "chunk_sidecars").glob("*.json"))
     assert names == ["chunk_00000.json", "chunk_00001.json", "chunk_00099.json", "chunk_00100.json"]
+
+
+# --------------------------------------------------------------------------------------
+# run_c2's circuit breaker -- the gap found by re-reading the code after C3's own
+# breaker was added: run_c2 had none, and only luck (the disconnect landing on the
+# second-to-last combination) kept it from repeating C3's ~4000-failed-attempts incident.
+# --------------------------------------------------------------------------------------
+
+
+def _failing_capture(*args, **kwargs) -> dict:
+    return {"completed": False, "overruns": 0, "returncode": 1, "bytes_written": 0}
+
+
+def test_run_c2_backs_off_and_gives_up_after_repeated_capture_failures(
+    mod, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scenario this test exists for: hardware disconnected partway through the sweep.
+
+    Before this fix, every one of the 36 combinations would have called `capture()` and
+    failed in rapid succession with no delay -- exactly the pattern that produced ~4000
+    failed attempts in under a minute in run_c3, before its own breaker was added.
+    """
+    monkeypatch.setattr(mod, "capture", _failing_capture)
+    sleeps: list[float] = []
+    monkeypatch.setattr(mod.time, "sleep", lambda s: sleeps.append(s))
+
+    result = mod.run_c2(tmp_path)
+
+    assert result["aborted"] == "device unavailable"
+    assert result["points"] == []
+    # Gives up at the 20th consecutive failure, checked before sleeping again -- so 19
+    # backoff delays happen (after failures 1-19), not 20. Same structure as run_c3's own
+    # breaker: no point sleeping right before giving up.
+    assert len(sleeps) == 19
+    assert all(s > 0 for s in sleeps), "no backoff delay between failed attempts"
+
+
+def test_run_c2_resets_the_failure_count_after_a_success(
+    mod, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single bad point must not count against the 20-failure budget forever after."""
+    calls = {"n": 0}
+
+    def flaky_capture(path, seconds, lna_db, vga_db) -> dict:
+        calls["n"] += 1
+        if calls["n"] <= 3:
+            return {"completed": False, "overruns": 0, "returncode": 1, "bytes_written": 0}
+        # Write a minimal valid cs8 file so the analysis step downstream does not choke.
+        np.zeros(2000, dtype=np.int8).tofile(path)
+        return {"completed": True, "overruns": 0, "returncode": 0, "bytes_written": 2000}
+
+    monkeypatch.setattr(mod, "capture", flaky_capture)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+
+    result = mod.run_c2(tmp_path)
+
+    assert result["aborted"] is None
+    assert len(result["points"]) == len(mod.C2_LNA_VALUES) * len(mod.C2_VGA_VALUES) - 3

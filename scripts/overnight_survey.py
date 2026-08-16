@@ -356,19 +356,24 @@ def run_c2(out_dir: Path, heartbeat: Callable[[str, int], None] | None = None) -
 class BitAccumulator:
     """ADC-occupancy and level statistics, updated one already-read block at a time."""
 
+    #: Signed code value at histogram index k: index 0 -> -128, index 255 -> 127.
+    _CODE_VALUES = np.arange(256, dtype=np.int64) - 128
+
     def __init__(self) -> None:
-        # A fixed 256-slot occupancy table beats a Python set here: the first version of
-        # this class (np.unique(...).tolist() into a set(), once per block) measured at
-        # 38% of the pipeline's own process_block cost against a real capture -- almost
-        # 8x the 5% ceiling this task set. That cost was Python-level set operations on
-        # thousands of boxed ints per block, not the arithmetic. A bincount against a
-        # fixed-size array is one vectorised call and needs no boxing at all.
-        self._code_seen = np.zeros(256, dtype=bool)
-        self._peak_code = 0
-        self._sum_i = 0.0
-        self._sum_q = 0.0
-        self._sum_i2 = 0.0
-        self._sum_q2 = 0.0
+        # Second rewrite. The first (np.unique(...).tolist() into a set()) measured 37.9%
+        # of process_block's own cost; a 256-slot boolean table with per-sample fancy
+        # indexing brought that to 15.9%, still 3x the 5% ceiling this task set -- because
+        # occupancy and the statistical moments were still two separate O(n) passes with
+        # float64 intermediates for the moments.
+        #
+        # A cs8 sample only ever takes one of 256 values, so a histogram is a *sufficient
+        # statistic* for every metric this class reports -- occupancy, peak, mean, std --
+        # not an approximation of one. Building it costs one np.bincount call per block per
+        # component (two total): one vectorised pass in C, no Python-level loop over
+        # samples, no per-sample float64 array. Every derived number (mean, std, peak,
+        # bits) is then computed once per *chunk*, from 256 bins, not once per sample.
+        self._hist_i = np.zeros(256, dtype=np.int64)
+        self._hist_q = np.zeros(256, dtype=np.int64)
         self._n = 0
 
     def update(self, block: np.ndarray) -> None:
@@ -380,22 +385,13 @@ class BitAccumulator:
         """
         if block.size == 0:
             return
-        codes_i = np.round(block.real * 128.0).astype(np.int32)
-        codes_q = np.round(block.imag * 128.0).astype(np.int32)
-        # +128 shifts the int8 range [-128, 127] to a valid index [0, 255]. Fancy-index
-        # assignment with repeated indices is well-defined here -- every hit just sets
-        # that slot True again -- so there is no need to count occurrences first. Clipped
-        # rather than trusted: a rounding edge case at exactly full scale could otherwise
-        # produce index 256 and crash an unattended overnight run over one sample.
-        self._code_seen[np.clip(codes_i + 128, 0, 255)] = True
-        self._code_seen[np.clip(codes_q + 128, 0, 255)] = True
-        self._peak_code = max(
-            self._peak_code, int(np.abs(codes_i).max()), int(np.abs(codes_q).max())
-        )
-        self._sum_i += float(codes_i.sum())
-        self._sum_q += float(codes_q.sum())
-        self._sum_i2 += float((codes_i.astype(np.float64) ** 2).sum())
-        self._sum_q2 += float((codes_q.astype(np.float64) ** 2).sum())
+        codes_i = np.clip(np.round(block.real * 128.0), -128, 127).astype(np.int32)
+        codes_q = np.clip(np.round(block.imag * 128.0), -128, 127).astype(np.int32)
+        # +128 shifts the int8 range [-128, 127] to a bincount-valid index [0, 255].
+        idx_i = (codes_i + 128).astype(np.uint8)
+        idx_q = (codes_q + 128).astype(np.uint8)
+        self._hist_i += np.bincount(idx_i, minlength=256)
+        self._hist_q += np.bincount(idx_q, minlength=256)
         self._n += block.size
 
     def result(self) -> dict:
@@ -410,11 +406,20 @@ class BitAccumulator:
                 "std_q": None,
                 "n_samples": 0,
             }
-        mean_i, mean_q = self._sum_i / self._n, self._sum_q / self._n
-        std_i = math.sqrt(max(self._sum_i2 / self._n - mean_i**2, 0.0))
-        std_q = math.sqrt(max(self._sum_q2 / self._n - mean_q**2, 0.0))
-        occupied = int(self._code_seen.sum())
-        peak_dbfs = 20 * math.log10(self._peak_code / 127.0) if self._peak_code > 0 else None
+        combined = self._hist_i + self._hist_q
+        occupied = int(np.count_nonzero(combined))
+        occupied_values = self._CODE_VALUES[combined > 0]
+        peak_code = int(np.abs(occupied_values).max()) if occupied_values.size else 0
+        peak_dbfs = 20 * math.log10(peak_code / 127.0) if peak_code > 0 else None
+
+        n_per_component = int(self._hist_i.sum())  # == self._n, one code per I sample
+        mean_i = float((self._CODE_VALUES * self._hist_i).sum()) / n_per_component
+        mean_q = float((self._CODE_VALUES * self._hist_q).sum()) / n_per_component
+        var_i = float((self._CODE_VALUES**2 * self._hist_i).sum()) / n_per_component - mean_i**2
+        var_q = float((self._CODE_VALUES**2 * self._hist_q).sum()) / n_per_component - mean_q**2
+        std_i = math.sqrt(max(var_i, 0.0))
+        std_q = math.sqrt(max(var_q, 0.0))
+
         return {
             "occupied_codes": occupied,
             "approx_bits": round(math.log2(max(occupied, 1)), 2),

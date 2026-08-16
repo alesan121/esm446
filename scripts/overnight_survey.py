@@ -38,12 +38,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess  # nosec B404 -- fixed argv only, no shell, used throughout this file
 import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -113,6 +115,40 @@ def check_disk(context: str) -> bool:
         )
         return False
     return True
+
+
+#: T3 -- STATUS.txt was previously written only in `main()`'s `finally: clean_shutdown()`.
+#: That is a fine record of a *clean* end and no record at all of any other one: an OOM
+#: kill, a power cut, or `kill -9` all leave it saying "RUNNING" forever, and on 8 GB of
+#: RAM during an 8-hour session an OOM is not a hypothetical. Rewritten periodically
+#: instead, so a stale timestamp on return dates the failure rather than hiding it.
+STATUS_PATH = OUTPUT_ROOT / "STATUS.json"
+HEARTBEAT_INTERVAL_S = 60.0
+
+
+def write_status(
+    state: str,
+    phase: str,
+    phase_progress: str = "",
+    started_at: str = "",
+    chunks_completed: int = 0,
+    overruns_total: int = 0,
+) -> None:
+    """Atomic status write: temp file + os.replace, so a reader never sees a half-written file."""
+    record = {
+        "state": state,
+        "phase": phase,
+        "phase_progress": phase_progress,
+        "last_heartbeat": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "started_at": started_at,
+        "pid": os.getpid(),
+        "chunks_completed": chunks_completed,
+        "overruns_total": overruns_total,
+        "disk_free_gb": round(free_gb(OUTPUT_ROOT), 1),
+    }
+    tmp = STATUS_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(record, indent=2))
+    os.replace(tmp, STATUS_PATH)
 
 
 def firmware_version() -> str:
@@ -206,9 +242,11 @@ def capture(path: Path, seconds: float, lna_db: float, vga_db: float) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-def run_c2(out_dir: Path) -> dict:
+def run_c2(out_dir: Path, heartbeat: Callable[[str, int], None] | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
+    total = len(C2_LNA_VALUES) * len(C2_VGA_VALUES)
+    completed = 0
 
     for lna in C2_LNA_VALUES:
         for vga in C2_VGA_VALUES:
@@ -252,6 +290,10 @@ def run_c2(out_dir: Path) -> dict:
             )
             del raw, iq
 
+            completed += 1
+            if heartbeat is not None:
+                heartbeat(f"C2 point {completed}/{total} ({label})", completed)
+
     return {"points": results, "aborted": None}
 
 
@@ -261,7 +303,9 @@ def run_c2(out_dir: Path) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-def run_c3(out_dir: Path, deadline: float) -> dict:
+def run_c3(
+    out_dir: Path, deadline: float, heartbeat: Callable[[str, int, int], None] | None = None
+) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "mount.json").write_text(
         json.dumps(asdict(mount_for(C3_LNA_DB, C3_VGA_DB)), indent=2)
@@ -301,6 +345,8 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
 
             chunk_seconds = min(C3_CHUNK_SECONDS, remaining)
             chunk_start = time.time()
+            if heartbeat is not None:
+                heartbeat(f"C3 chunk {chunk_index} starting", chunk_index, total_overruns)
             outcome = capture(chunk_path, chunk_seconds, C3_LNA_DB, C3_VGA_DB)
             total_overruns += outcome["overruns"]
 
@@ -342,6 +388,12 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
                     )
                     aborted = "device unavailable"
                     break
+                if heartbeat is not None:
+                    heartbeat(
+                        f"C3 chunk {chunk_index} failed ({consecutive_failures} consecutive)",
+                        chunk_index,
+                        total_overruns,
+                    )
                 time.sleep(min(2 ** min(consecutive_failures, 6), 60))
                 chunk_path.unlink(missing_ok=True)
                 continue
@@ -371,6 +423,8 @@ def run_c3(out_dir: Path, deadline: float) -> dict:
             )
             metrics_handle.flush()
             chunk_index += 1
+            if heartbeat is not None:
+                heartbeat(f"C3 chunk {chunk_index} complete", chunk_index, total_overruns)
 
     return {
         "aborted": aborted,
@@ -406,13 +460,11 @@ def clean_shutdown() -> None:
 
 
 def main() -> int:
-    status_path = OUTPUT_ROOT / "STATUS.txt"
-    status_path.write_text(
-        f"RUNNING\nstarted {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
-    )
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    write_status(state="running", phase="startup", started_at=started_at)
 
     if not check_disk("startup"):
-        status_path.write_text("ABORTED: insufficient disk at startup\n")
+        write_status(state="aborted_phase_startup", phase="startup", started_at=started_at)
         return 1
 
     schedule_safety_shutdown()
@@ -422,7 +474,25 @@ def main() -> int:
 
     try:
         logger.info("=== C2: gain sweep ===")
-        summary["c2"] = run_c2(OUTPUT_ROOT / "c2_gain_sweep")
+
+        def c2_heartbeat(progress: str, completed: int) -> None:
+            write_status(
+                state="running",
+                phase="c2_gain_sweep",
+                phase_progress=progress,
+                started_at=started_at,
+                chunks_completed=completed,
+            )
+
+        summary["c2"] = run_c2(OUTPUT_ROOT / "c2_gain_sweep", heartbeat=c2_heartbeat)
+        if summary["c2"].get("aborted") == "disk":
+            write_status(
+                state="disk_guard_tripped",
+                phase="c2_gain_sweep",
+                started_at=started_at,
+                chunks_completed=len(summary["c2"]["points"]),
+            )
+            return 1
 
         remaining = deadline - time.time()
         if remaining < 600:
@@ -434,19 +504,53 @@ def main() -> int:
             C3_VGA_DB,
             remaining / 3600,
         )
-        summary["c3"] = run_c3(OUTPUT_ROOT / "c3_long_run", deadline)
 
-        status_path.write_text("COMPLETED\n" + json.dumps(summary, indent=2, default=str) + "\n")
+        def c3_heartbeat(progress: str, chunks: int, overruns: int) -> None:
+            write_status(
+                state="running",
+                phase="c3_long_run",
+                phase_progress=progress,
+                started_at=started_at,
+                chunks_completed=chunks,
+                overruns_total=overruns,
+            )
+
+        summary["c3"] = run_c3(OUTPUT_ROOT / "c3_long_run", deadline, heartbeat=c3_heartbeat)
+        if summary["c3"].get("aborted") == "disk":
+            write_status(
+                state="disk_guard_tripped",
+                phase="c3_long_run",
+                started_at=started_at,
+                chunks_completed=summary["c3"].get("chunks", 0),
+                overruns_total=summary["c3"].get("overruns_total", 0),
+            )
+            return 1
+        if summary["c3"].get("aborted") == "device unavailable":
+            write_status(
+                state="aborted_phase_c3_long_run",
+                phase="c3_long_run",
+                phase_progress="device unavailable after repeated capture failures",
+                started_at=started_at,
+                chunks_completed=summary["c3"].get("chunks", 0),
+                overruns_total=summary["c3"].get("overruns_total", 0),
+            )
+            return 1
+
+        write_status(
+            state="completed",
+            phase="done",
+            started_at=started_at,
+            chunks_completed=summary["c3"].get("chunks", 0),
+            overruns_total=summary["c3"].get("overruns_total", 0),
+        )
+        (OUTPUT_ROOT / "SUMMARY.json").write_text(json.dumps(summary, indent=2, default=str))
         logger.info("overnight survey complete")
         return 0
 
     except Exception:  # noqa: BLE001
         logger.exception("overnight survey failed")
-        status_path.write_text(
-            "ABORTED: exception, see survey.log\n"
-            + json.dumps(summary, indent=2, default=str)
-            + "\n"
-        )
+        write_status(state="aborted_phase_exception", phase="unknown", started_at=started_at)
+        (OUTPUT_ROOT / "SUMMARY.json").write_text(json.dumps(summary, indent=2, default=str))
         return 1
 
     finally:

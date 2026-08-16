@@ -123,8 +123,19 @@ def check_disk(context: str) -> bool:
 #: kill, a power cut, or `kill -9` all leave it saying "RUNNING" forever, and on 8 GB of
 #: RAM during an 8-hour session an OOM is not a hypothetical. Rewritten periodically
 #: instead, so a stale timestamp on return dates the failure rather than hiding it.
-STATUS_PATH = OUTPUT_ROOT / "STATUS.json"
 HEARTBEAT_INTERVAL_S = 60.0
+
+
+def status_path() -> Path:
+    """Derived from OUTPUT_ROOT on every call, not cached at import time.
+
+    A module-level `STATUS_PATH = OUTPUT_ROOT / "STATUS.json"` computed once at import is a
+    trace burned onto a PCB: correct until someone moves the connector. Reassigning
+    `OUTPUT_ROOT` later (a test redirecting output to a tmp dir, say) would silently leave
+    writes going to the old location unless every derived path were reassigned by hand too.
+    A function has no state to forget to update.
+    """
+    return OUTPUT_ROOT / "STATUS.json"
 
 
 def write_status(
@@ -147,9 +158,10 @@ def write_status(
         "overruns_total": overruns_total,
         "disk_free_gb": round(free_gb(OUTPUT_ROOT), 1),
     }
-    tmp = STATUS_PATH.with_suffix(".json.tmp")
+    target = status_path()
+    tmp = target.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(record, indent=2))
-    os.replace(tmp, STATUS_PATH)
+    os.replace(tmp, target)
 
 
 def firmware_version() -> str:

@@ -22,10 +22,12 @@ import pytest
 
 
 def _load_module(status_dir: Path) -> ModuleType:
-    """Load overnight_survey.py fresh, with OUTPUT_ROOT/STATUS_PATH redirected to a temp dir.
+    """Load overnight_survey.py fresh, with OUTPUT_ROOT redirected to a temp dir.
 
-    Module-scope code creates OUTPUT_ROOT and derives STATUS_PATH from it at import time, so
-    this patches both after loading rather than trying to intercept the real ~/esm446_overnight.
+    status_path() derives from OUTPUT_ROOT on every call rather than caching a path at
+    import time, so reassigning OUTPUT_ROOT here is enough on its own -- there is no second
+    "derived" attribute that could be forgotten and silently point at the real
+    ~/esm446_overnight instead of this test's tmp_path.
     """
     path = Path(__file__).resolve().parent.parent / "scripts" / "overnight_survey.py"
     spec = importlib.util.spec_from_file_location("overnight_survey", path)
@@ -33,7 +35,6 @@ def _load_module(status_dir: Path) -> ModuleType:
     sys.modules["overnight_survey"] = module
     spec.loader.exec_module(module)
     module.OUTPUT_ROOT = status_dir
-    module.STATUS_PATH = status_dir / "STATUS.json"
     return module
 
 
@@ -59,7 +60,7 @@ def test_write_status_carries_the_required_fields(mod) -> None:
         overruns_total=2,
     )
 
-    record = json.loads(mod.STATUS_PATH.read_text())
+    record = json.loads(mod.status_path().read_text())
     assert record["state"] == "running"
     assert record["phase"] == "c3_long_run"
     assert record["phase_progress"] == "chunk 5 starting"
@@ -73,11 +74,11 @@ def test_write_status_carries_the_required_fields(mod) -> None:
 
 def test_successive_writes_advance_the_heartbeat_timestamp(mod) -> None:
     mod.write_status(state="running", phase="c2_gain_sweep", chunks_completed=1)
-    first = json.loads(mod.STATUS_PATH.read_text())["last_heartbeat"]
+    first = json.loads(mod.status_path().read_text())["last_heartbeat"]
 
     time.sleep(1.1)
     mod.write_status(state="running", phase="c2_gain_sweep", chunks_completed=2)
-    second = json.loads(mod.STATUS_PATH.read_text())["last_heartbeat"]
+    second = json.loads(mod.status_path().read_text())["last_heartbeat"]
 
     assert second != first, "the heartbeat did not move between two writes a second apart"
 
@@ -96,7 +97,7 @@ def test_an_abrupt_death_is_datable_from_the_last_heartbeat(mod) -> None:
     # Time passes with nobody updating the file -- the process is gone.
     time.sleep(1.2)
 
-    record = json.loads(mod.STATUS_PATH.read_text())
+    record = json.loads(mod.status_path().read_text())
     # timegm, not mktime: the timestamp string was built from gmtime() (UTC), and mktime
     # would silently reinterpret it in the local zone -- exactly wrong by the UTC offset.
     last_heartbeat = calendar.timegm(time.strptime(record["last_heartbeat"], "%Y-%m-%dT%H:%M:%SZ"))
@@ -117,6 +118,6 @@ def test_terminal_states_are_distinct_from_running(mod) -> None:
     """completed / aborted_phase_X / disk_guard_tripped must not be confusable with RUNNING."""
     for state in ("completed", "aborted_phase_c3_long_run", "disk_guard_tripped"):
         mod.write_status(state=state, phase="done")
-        record = json.loads(mod.STATUS_PATH.read_text())
+        record = json.loads(mod.status_path().read_text())
         assert record["state"] == state
         assert record["state"] != "running"

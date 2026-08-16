@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess  # nosec B404 -- fixed argv only, no shell, used throughout this file
@@ -195,6 +196,46 @@ def mount_for(lna_db: float, vga_db: float) -> Mount:
     )
 
 
+def write_chunk_sidecar(
+    out_dir: Path,
+    chunk_index: int,
+    chunk_start: float,
+    chunk_end: float,
+    outcome: dict,
+    bit_metrics: dict,
+) -> None:
+    """One sidecar per chunk, written atomically (temp file + os.replace).
+
+    Replaces the single mount.json that covered all 8 hours of a session with one file per
+    chunk -- the triage found that a single sidecar gives no temporal resolution at all: if
+    the physical setup changed at hour 5, nothing on disk could show it. This is what fixes
+    that, going forward. It cannot recover anything about last night's session, because last
+    night's raw IQ no longer exists to re-derive it from.
+    """
+    mount = mount_for(C3_LNA_DB, C3_VGA_DB)
+    record = {
+        **asdict(mount),
+        # hackrf_transfer has no gain-readback path (unlike SoapySource, which reads back
+        # what the hardware actually accepted). These are the values requested on the
+        # command line, not confirmed by the device. Said explicitly rather than left to be
+        # assumed, per the same reasoning that put every other mounting condition here.
+        "gain_source": "requested",
+        "chunk_index": chunk_index,
+        "chunk_start": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(chunk_start)),
+        "chunk_end": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(chunk_end)),
+        "chunk_duration_s": round(chunk_end - chunk_start, 2),
+        "capture_completed": outcome["completed"],
+        "capture_overruns": outcome["overruns"],
+        "bit": bit_metrics,
+    }
+    sidecar_dir = out_dir / "chunk_sidecars"
+    sidecar_dir.mkdir(exist_ok=True)
+    final_path = sidecar_dir / f"chunk_{chunk_index:05d}.json"
+    tmp_path = final_path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(record, indent=2))
+    os.replace(tmp_path, final_path)
+
+
 def capture(path: Path, seconds: float, lna_db: float, vga_db: float) -> dict:
     """One hackrf_transfer capture. Returns overrun count and whether it completed cleanly."""
     quantised = quantise_gains(lna_db, vga_db)
@@ -298,6 +339,95 @@ def run_c2(out_dir: Path, heartbeat: Callable[[str, int], None] | None = None) -
 
 
 # --------------------------------------------------------------------------------------
+# Inline BIT metrics -- accumulated within the same pass the pipeline already makes over
+# each chunk's blocks, not a second read of the file. This is the fix for the gap the
+# triage found: last night's chunks were deleted with nothing recorded about whether their
+# raw samples looked like a real signal or a degenerate one, and there is no way to check
+# after the fact once the file is gone.
+#
+# Deliberately does NOT judge the numbers. No reference capture with a 50 ohm termination
+# exists yet (still waiting on the part), so there is nothing honest to compare against.
+# Recording "6 codes, -18.2 dBFS" is a measurement. Labelling it "nominal" or "anomalous"
+# without a reference would be an invented verdict, and this project has already retracted
+# six figures for exactly that shape of mistake.
+# --------------------------------------------------------------------------------------
+
+
+class BitAccumulator:
+    """ADC-occupancy and level statistics, updated one already-read block at a time."""
+
+    def __init__(self) -> None:
+        # A fixed 256-slot occupancy table beats a Python set here: the first version of
+        # this class (np.unique(...).tolist() into a set(), once per block) measured at
+        # 38% of the pipeline's own process_block cost against a real capture -- almost
+        # 8x the 5% ceiling this task set. That cost was Python-level set operations on
+        # thousands of boxed ints per block, not the arithmetic. A bincount against a
+        # fixed-size array is one vectorised call and needs no boxing at all.
+        self._code_seen = np.zeros(256, dtype=bool)
+        self._peak_code = 0
+        self._sum_i = 0.0
+        self._sum_q = 0.0
+        self._sum_i2 = 0.0
+        self._sum_q2 = 0.0
+        self._n = 0
+
+    def update(self, block: np.ndarray) -> None:
+        """Fold in one block already read for pipeline processing -- no separate I/O.
+
+        `block` is complex64 in FileSource's decoded units (code / 128.0 for cs8). The
+        underlying int8 codes are recovered by inverting that scale, not by re-reading the
+        file: FileSource.SAMPLE_FORMATS fixes cs8's full scale at 128.0.
+        """
+        if block.size == 0:
+            return
+        codes_i = np.round(block.real * 128.0).astype(np.int32)
+        codes_q = np.round(block.imag * 128.0).astype(np.int32)
+        # +128 shifts the int8 range [-128, 127] to a valid index [0, 255]. Fancy-index
+        # assignment with repeated indices is well-defined here -- every hit just sets
+        # that slot True again -- so there is no need to count occurrences first. Clipped
+        # rather than trusted: a rounding edge case at exactly full scale could otherwise
+        # produce index 256 and crash an unattended overnight run over one sample.
+        self._code_seen[np.clip(codes_i + 128, 0, 255)] = True
+        self._code_seen[np.clip(codes_q + 128, 0, 255)] = True
+        self._peak_code = max(
+            self._peak_code, int(np.abs(codes_i).max()), int(np.abs(codes_q).max())
+        )
+        self._sum_i += float(codes_i.sum())
+        self._sum_q += float(codes_q.sum())
+        self._sum_i2 += float((codes_i.astype(np.float64) ** 2).sum())
+        self._sum_q2 += float((codes_q.astype(np.float64) ** 2).sum())
+        self._n += block.size
+
+    def result(self) -> dict:
+        if self._n == 0:
+            return {
+                "occupied_codes": 0,
+                "approx_bits": 0.0,
+                "peak_dbfs": None,
+                "mean_i": None,
+                "mean_q": None,
+                "std_i": None,
+                "std_q": None,
+                "n_samples": 0,
+            }
+        mean_i, mean_q = self._sum_i / self._n, self._sum_q / self._n
+        std_i = math.sqrt(max(self._sum_i2 / self._n - mean_i**2, 0.0))
+        std_q = math.sqrt(max(self._sum_q2 / self._n - mean_q**2, 0.0))
+        occupied = int(self._code_seen.sum())
+        peak_dbfs = 20 * math.log10(self._peak_code / 127.0) if self._peak_code > 0 else None
+        return {
+            "occupied_codes": occupied,
+            "approx_bits": round(math.log2(max(occupied, 1)), 2),
+            "peak_dbfs": round(peak_dbfs, 1) if peak_dbfs is not None else None,
+            "mean_i": round(mean_i, 3),
+            "mean_q": round(mean_q, 3),
+            "std_i": round(std_i, 3),
+            "std_q": round(std_q, 3),
+            "n_samples": self._n,
+        }
+
+
+# --------------------------------------------------------------------------------------
 # C3 -- long run at the shipped default: capture a chunk, process it through the real
 # pipeline, log metrics, delete the chunk. No continuous raw IQ kept.
 # --------------------------------------------------------------------------------------
@@ -351,6 +481,9 @@ def run_c3(
             total_overruns += outcome["overruns"]
 
             batch_count = 0
+            bit = BitAccumulator()
+            bit_time = 0.0
+            process_time = 0.0
             if outcome["completed"]:
                 consecutive_failures = 0
                 with FileSource(chunk_path, SAMPLE_RATE_HZ, CENTRE_HZ, "cs8") as source:
@@ -359,7 +492,13 @@ def run_c3(
                         if block is None:
                             break
                         if block.size:
+                            t0 = time.perf_counter()
                             batch = node.process_block(block)
+                            t1 = time.perf_counter()
+                            bit.update(block)
+                            t2 = time.perf_counter()
+                            process_time += t1 - t0
+                            bit_time += t2 - t1
                             if batch:
                                 sink.write(batch)
                                 reports_total += len(batch)
@@ -401,27 +540,35 @@ def run_c3(
             chunk_path.unlink(missing_ok=True)
 
             usage = resource.getrusage(resource.RUSAGE_SELF)
-            metrics_handle.write(
-                json.dumps(
-                    {
-                        "timestamp": now,
-                        "chunk_index": chunk_index,
-                        "chunk_seconds": chunk_seconds,
-                        "chunk_capture_wall_s": time.time() - chunk_start,
-                        "elapsed_s": now - started,
-                        "frames_processed": node.frames_processed,
-                        "emissions_this_chunk": batch_count,
-                        "emissions_total": reports_total,
-                        "chunk_overruns": outcome["overruns"],
-                        "overruns_total": total_overruns,
-                        "chunk_completed": outcome["completed"],
-                        "maxrss_kb": usage.ru_maxrss,
-                        "free_disk_gb": free_gb(OUTPUT_ROOT),
-                    }
-                )
-                + "\n"
+            chunk_end = time.time()
+            bit_metrics = bit.result()
+            bit_overhead_pct = (
+                round(100.0 * bit_time / process_time, 2) if process_time > 0 else None
             )
+            metrics_record = {
+                # "timestamp"/"elapsed_s" previously captured `now`, taken at the top of the
+                # loop *before* this chunk's ~4-5 minute capture ran -- every prior entry in
+                # this file understates when it was actually written by about one chunk's
+                # duration. Fixed here to the true end-of-chunk time; not touched elsewhere.
+                "timestamp": chunk_end,
+                "elapsed_s": chunk_end - started,
+                "chunk_index": chunk_index,
+                "chunk_seconds": chunk_seconds,
+                "chunk_capture_wall_s": chunk_end - chunk_start,
+                "frames_processed": node.frames_processed,
+                "emissions_this_chunk": batch_count,
+                "emissions_total": reports_total,
+                "chunk_overruns": outcome["overruns"],
+                "overruns_total": total_overruns,
+                "chunk_completed": outcome["completed"],
+                "maxrss_kb": usage.ru_maxrss,
+                "free_disk_gb": free_gb(OUTPUT_ROOT),
+                "bit": bit_metrics,
+                "bit_overhead_pct_of_process_block": bit_overhead_pct,
+            }
+            metrics_handle.write(json.dumps(metrics_record) + "\n")
             metrics_handle.flush()
+            write_chunk_sidecar(out_dir, chunk_index, chunk_start, chunk_end, outcome, bit_metrics)
             chunk_index += 1
             if heartbeat is not None:
                 heartbeat(f"C3 chunk {chunk_index} complete", chunk_index, total_overruns)

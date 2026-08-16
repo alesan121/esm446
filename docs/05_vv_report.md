@@ -454,9 +454,47 @@ two things worth stating as open, not settled:
   **This is a hypothesis to falsify, not a finding to build on**: if the noise that fills the
   ADC is generated downstream of the LNA, an occupancy-based discriminator may not distinguish
   an antenna connected from a port left open at some gain settings, which would undercut the
-  premise of using occupancy alone to screen a capture's provenance. Falsifying it needs
-  paired captures (50 ohm termination / antenna / open port) at matched gain, which needs the
-  50 ohm termination that has not arrived yet.
+  premise of using occupancy alone to screen a capture's provenance.
+
+  **Partially falsified since, at LNA 32 / VGA 20/32/40/50, antenna vs. open port:** paired
+  10 s captures at each gain point (antenna connected vs. port open, HackRF and cable
+  untouched between the two) found clear separation from VGA 32 upward -- occupied codes 15
+  vs. 9 (VGA 32), 36 vs. 18 (VGA 40), 99 vs. 55 (VGA 50) -- and no separation at all at VGA 20
+  (6 vs. 5), which is the already-known quantisation floor. The premise holds from VGA 32
+  upward; it does not hold at VGA 20. This does not yet use a proper 50 ohm termination
+  (still on order) -- the "open port" condition here is a genuinely disconnected antenna, not
+  a matched load, so it bounds the question but does not fully settle it.
+
+  **Then a second measurement at VGA 40 found something more important than the separation
+  itself.** A dispersion check -- 4 short captures each condition, same session, antenna
+  untouched between repeats within a condition -- gave a clean result on its own terms:
+  antenna 62-66 codes (mean 63.75, std 1.48), open port 18-19 codes (mean 18.50, std 0.50),
+  a 43-code gap against roughly ±1.5 codes of scatter within each condition, about 29 standard
+  deviations of separation. Taken alone that looks like a settled result.
+
+  **It is not, because the antenna condition itself had already moved.** The earlier VGA 40
+  comparison (previous paragraph, same gain, same antenna, hours earlier the same day) found
+  36 occupied codes with the antenna connected. This session found 63.75. Same condition,
+  same gain point, a 77 % change within one day. The dispersion just measured (±1.5 codes) is
+  therefore **the dispersion *within one twenty-minute session*, not the dispersion of the
+  "antenna connected" condition** -- four captures taken back to back share whatever the band's
+  traffic was doing at that moment, which is exactly why they cluster tightly. The band's
+  traffic level, not just the antenna/open-port distinction, is very plausibly what is moving
+  the occupied-code count between the two sessions.
+
+  **The consequence for any future threshold:** the case that actually decides a workable
+  threshold is not the one measured today. It is "antenna connected, quiet band" -- overnight,
+  low traffic -- and that floor has not been measured. If band traffic is what pushes
+  occupancy from 36 to 64, the quiet-band floor could sit meaningfully lower than either
+  figure, plausibly closer to the open-port range (18-19) than either antenna measurement
+  suggests. **A threshold fixed from today's midday data risks false positives through every
+  quiet overnight session** -- precisely the sessions the BIT exists to protect. No threshold
+  is set from this data. The next overnight run should take a short reference capture at the
+  same gain point at the start and end of the session specifically to measure this floor,
+  rather than dedicating a separate session to it.
+
+  Falsifying the remaining VGA 20 gap, and replacing the open-port proxy with a proper
+  reference, both still need the 50 ohm termination that has not arrived yet.
 - One point in that sweep, LNA 40 dB / VGA 30 dB, measured 42 occupied codes against 12-18 at
   the same VGA setting for every other LNA value -- a break in an otherwise smooth trend,
   timestamped at 21:18:28, immediately before two later points in the same sweep failed to

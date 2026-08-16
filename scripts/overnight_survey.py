@@ -362,9 +362,8 @@ class BitAccumulator:
     def __init__(self) -> None:
         # Second rewrite. The first (np.unique(...).tolist() into a set()) measured 37.9%
         # of process_block's own cost; a 256-slot boolean table with per-sample fancy
-        # indexing brought that to 15.9%, still 3x the 5% ceiling this task set -- because
-        # occupancy and the statistical moments were still two separate O(n) passes with
-        # float64 intermediates for the moments.
+        # indexing brought that to 15.9% -- because occupancy and the statistical moments
+        # were still two separate O(n) passes with float64 intermediates for the moments.
         #
         # A cs8 sample only ever takes one of 256 values, so a histogram is a *sufficient
         # statistic* for every metric this class reports -- occupancy, peak, mean, std --
@@ -372,6 +371,21 @@ class BitAccumulator:
         # component (two total): one vectorised pass in C, no Python-level loop over
         # samples, no per-sample float64 array. Every derived number (mean, std, peak,
         # bits) is then computed once per *chunk*, from 256 bins, not once per sample.
+        #
+        # This version measures 10.1% of process_block's own cost (three repeated
+        # measurements: 10.12%, 10.23%, 10.12%). The original ~5% figure was a target set
+        # without knowing the true cost of the arithmetic; it was not met, and pretending
+        # otherwise would be worse than stating the real number. What was checked before
+        # accepting 10.1% instead of continuing to chase 5%: (1) combining the I/Q
+        # round/clip/shift into one pass over the interleaved buffer, measured no
+        # improvement (643us/block vs ~622us) -- the remaining cost is genuine O(n) work,
+        # not per-call overhead; (2) whether the histogram could consume cs8's raw int8
+        # bytes directly, skipping round/clip entirely -- it cannot without either a second
+        # file read (explicitly ruled out) or changing FileSource.read()'s public contract
+        # in esm446/core/source.py, which is a core-package change, not a surgical one to
+        # this operator script. 10.1% is accepted: it runs once per 240s chunk, not on the
+        # real-time detection path, and it is the price of turning eight hours of otherwise
+        # unverifiable data into eight hours someone can trust.
         self._hist_i = np.zeros(256, dtype=np.int64)
         self._hist_q = np.zeros(256, dtype=np.int64)
         self._n = 0

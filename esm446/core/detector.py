@@ -365,9 +365,12 @@ class CfarDetector:
 
         Holding both was the original design and it is why the node reported eight
         twenty-second emissions on the first ambient capture ever put through it. Measured on
-        receiver noise, holding the level for 64 frames gives a false alarm rate of
-        3.3e-3 against a 1e-8 design point; tracking it per frame gives 5.2e-5, a
-        sixty-fourfold improvement, for 0.03 CPU-seconds per signal second.
+        that capture -- ambient band noise at high gain, antenna connected, not the quieter
+        receiver-only vector -- holding the level for 64 frames gives a false alarm rate of
+        3.3e-3 against a 1e-8 design point; tracking it per frame gives 8.3e-6, roughly a
+        four-hundredfold improvement, for 0.03 CPU-seconds per signal second. See
+        `tests/test_false_alarm_on_real_noise.py`, which is where these figures are measured
+        and kept honest by a passing test rather than transcribed once and left to drift.
 
         None of this appears on synthetic noise, which is stationary by construction: there
         the two are indistinguishable and the test suite measured them as such for months.
@@ -415,7 +418,7 @@ class CfarDetector:
         it was without any correction at all.
 
         A median would also be robust, and was measured: it costs three times as much and
-        gives a worse false alarm rate, 4.0e-4 against 5.2e-5. The mean is the better estimator
+        gives a worse false alarm rate, 4.0e-4 against 8.3e-6. The mean is the better estimator
         of a mean, which is what a power level is.
 
         Args:

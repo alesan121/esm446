@@ -77,6 +77,21 @@ jobs:
           overwrite: true
           retention-days: 7
 
+      # results/measured.json (T1) is gitignored on purpose: it is touched by every ordinary
+      # pytest run, not by an opt-in command, so versioning it is what would produce noisy
+      # diffs. Publishing it here is what lets a future consistency check (comparing a
+      # document's transcribed figure against its key) read a current file without depending
+      # on someone having run the suite locally first.
+      - name: Upload measured-results artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: measured-results
+          path: results/measured.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
+
       # The rewrite exists because v0 ran slower than real time, so a performance regression
       # here is a functional regression and fails the build. The budget applies to the whole
       # pipeline: gating the channeliser alone once reported everything healthy while the

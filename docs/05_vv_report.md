@@ -433,6 +433,44 @@ Settling it needs a disciplined oscillator, which is the same instrument REQ-CAL
 blocked on. The measurement is limited by the absence of a traceable reference, not by the
 technique.
 
+**An eight-hour unattended capture (2026-08-15/16) produced data of unverifiable
+provenance, and the tooling that let that happen has been fixed.** The session's long-run
+phase captured, processed and deleted each chunk in sequence, keeping only aggregate metrics
+and one `mount.json` for the whole 8 hours. That meant two things could not be checked after
+the fact, because the raw samples they would have been checked against no longer existed:
+whether the antenna stayed connected for the full session, and whether anything about the
+physical setup changed partway through it. Both are now fixed going forward -- an inline
+ADC-occupancy/level accumulator runs in the same block-by-block pass the pipeline already
+makes over each chunk (no second file read), and one sidecar is written per chunk instead of
+one per session -- but neither fix can be applied retroactively to data that is already gone.
+That session's results are recorded as unverified, not as valid.
+
+A short gain sweep taken the same night (34 of 36 LNA x VGA points, raw IQ retained) surfaced
+two things worth stating as open, not settled:
+
+- *ADC occupancy is dominated by VGA, not by total gain.* Holding VGA fixed and varying LNA
+  from 0 to 32 dB changes the occupied code count by at most one code at every VGA setting
+  tried; holding LNA fixed and sweeping VGA changes it by more than an order of magnitude.
+  **This is a hypothesis to falsify, not a finding to build on**: if the noise that fills the
+  ADC is generated downstream of the LNA, an occupancy-based discriminator may not distinguish
+  an antenna connected from a port left open at some gain settings, which would undercut the
+  premise of using occupancy alone to screen a capture's provenance. Falsifying it needs
+  paired captures (50 ohm termination / antenna / open port) at matched gain, which needs the
+  50 ohm termination that has not arrived yet.
+- One point in that sweep, LNA 40 dB / VGA 30 dB, measured 42 occupied codes against 12-18 at
+  the same VGA setting for every other LNA value -- a break in an otherwise smooth trend,
+  timestamped at 21:18:28, immediately before two later points in the same sweep failed to
+  capture at all (returncode 1) when the HackRF was disconnected. Plausible, not confirmed:
+  the connection may already have been degrading before it failed outright. Recommended before
+  trusting that point: re-capture it.
+
+Separately, and not a signal-quality question: **the same session's long-run phase spent
+roughly 25 % of its wall-clock time processing rather than capturing.** 90 chunks of a nominal
+240 s each account for 6.0 hours of RF; the session ran 8.01 hours. The overhead is the
+CFAR/channeliser pass over the previous chunk running to completion, serialised, before the
+next capture opens -- measured directly from the session's own per-chunk timing, not
+estimated. Noted as a future efficiency improvement (overlapping capture and processing would
+recover most of it), not prioritised over the provenance gap above.
 
 **Specific emitter identification — attempted, and it failed.** The ±37.5 kHz spurious pair
 was the strongest candidate: discrete, repeatable, and a property of the transmitter rather

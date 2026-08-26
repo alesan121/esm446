@@ -159,6 +159,12 @@ def design_prototype(config: ChannelizerConfig) -> np.ndarray:
     had been producing spurious detections in both neighbouring bins, which is a
     channeliser fault that looks exactly like a detector fault.
 
+    `tests/test_channelizer.py::test_modulated_emitter_does_not_leak_into_adjacent_bins`
+    records the current value under the key
+    ``channelizer.adjacent_channel_rejection_modulated`` on every run -- see
+    ``results/measured.json`` rather than trusting the number above, which is a historical
+    snapshot and has already drifted once (92.9 -> 92.2 dB, no code change involved).
+
     Designed once, at construction. The v0 prototype rebuilt its filter inside the per-
     channel loop on every block.
     """

@@ -18,7 +18,7 @@ attached.
 | | measured |
 |---|---|
 | Throughput | **0.30** CPU-s per signal second — 3.4× real time, against v0's **6.9** |
-| Adjacent-channel rejection | **92.9 dB** measured on a modulated emitter |
+| Adjacent-channel rejection | **92.2 dB** measured on a modulated emitter (`channelizer.adjacent_channel_rejection_modulated`) |
 | Sensitivity ripple across a bin | **6.02 dB** worst case, stated rather than hidden |
 | False alarm rate | **0.90–1.12e-3** against 1e-3 on synthetic noise; **zero** over 2.88e10 cells on real receiver noise at the shipped default (two-hour indoor run), against a 1e-8 design point |
 | Credible interval coverage | **95.3 %** achieved for the 95 % ring |

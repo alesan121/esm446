@@ -48,38 +48,38 @@ def test_an_rf_level_without_gains_is_refused(results_path: Path) -> None:
     """v0's OFFSET_CAL was irreproducible for exactly this reason -- a power with no gains."""
     with pytest.raises(MeasurementError, match="lna_db"):
         record_measurement(
-            "x", -92.9, units="dB", conditions=_minimal_conditions(), path=results_path
+            "x", -92.9, units="dBFS", conditions=_minimal_conditions(), path=results_path
         )
 
 
 def test_an_rf_level_with_gains_is_accepted(results_path: Path) -> None:
     record_measurement(
         "x",
-        92.9,
-        units="dB",
+        -92.9,
+        units="dBFS",
         conditions=_minimal_conditions(lna_db=32.0, vga_db=40.0),
         path=results_path,
     )
-    assert json.loads(results_path.read_text())["x"]["value"] == 92.9
+    assert json.loads(results_path.read_text())["x"]["value"] == -92.9
 
 
-@pytest.mark.parametrize("units", ["dBFS", "dBm", "dBc", "dB rejection"])
-def test_rf_unit_detection_is_case_and_phrasing_insensitive(results_path: Path, units: str) -> None:
+@pytest.mark.parametrize("units", ["dBFS", "dBm", "DbFs", "dBM"])
+def test_absolute_rf_level_detection_is_case_insensitive(results_path: Path, units: str) -> None:
+    """dBFS/dBm are absolute levels -- they depend on the gain they were measured at."""
     with pytest.raises(MeasurementError, match="lna_db"):
         record_measurement(
             "x", 1.0, units=units, conditions=_minimal_conditions(), path=results_path
         )
 
 
-def test_a_non_rf_unit_does_not_require_gains(results_path: Path) -> None:
-    record_measurement(
-        "x",
-        8.3e-6,
-        units="false alarms per cell",
-        conditions=_minimal_conditions(),
-        path=results_path,
-    )
-    assert json.loads(results_path.read_text())["x"]["value"] == 8.3e-6
+@pytest.mark.parametrize("units", ["dBc", "dB rejection", "dB", "false alarms per cell"])
+def test_ratio_units_do_not_require_gains(results_path: Path, units: str) -> None:
+    """dBc and bare 'dB' are typically ratios (rejection, gain, SNR cost) computed between two
+    quantities in the same capture -- they cancel the gain they were measured at, so forcing
+    lna_db/vga_db on them would be misleading rather than useful. Found while migrating the
+    92.9 dB adjacent-channel-rejection figure, which is exactly such a ratio."""
+    record_measurement("x", 1.0, units=units, conditions=_minimal_conditions(), path=results_path)
+    assert json.loads(results_path.read_text())["x"]["value"] == 1.0
 
 
 def test_pending_requires_value_none(results_path: Path) -> None:
@@ -92,6 +92,18 @@ def test_pending_requires_value_none(results_path: Path) -> None:
             status="pending",
             path=results_path,
         )
+
+
+def test_a_numpy_scalar_value_is_coerced_to_a_plain_float(results_path: Path) -> None:
+    """DSP tests routinely produce np.float32/float64 from a complex64 pipeline; json cannot
+    serialise those. Found migrating the 92.9 dB figure, whose rejection_db was np.float32."""
+    np = pytest.importorskip("numpy")
+    record_measurement(
+        "x", np.float32(92.19631), units="dB", conditions=_minimal_conditions(), path=results_path
+    )
+    stored = json.loads(results_path.read_text())["x"]["value"]
+    assert isinstance(stored, float)
+    assert stored == pytest.approx(92.19631, abs=1e-4)
 
 
 def test_measured_requires_a_real_value(results_path: Path) -> None:

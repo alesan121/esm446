@@ -46,10 +46,19 @@ from typing import Any, Literal
 
 MEASURED_PATH = Path("results/measured.json")
 
-#: Substrings that mark `units` as an RF power/level figure, which therefore needs its gain
-#: point recorded -- the same lesson as v0's OFFSET_CAL, which nobody could reproduce because
-#: it was never written down alongside the gains it was measured at.
-_RF_UNIT_HINTS = ("db", "dbfs", "dbm", "dbc")
+#: Substrings that mark `units` as an *absolute* RF level (depends on receiver gain), which
+#: therefore needs its gain point recorded -- the same lesson as v0's OFFSET_CAL, which nobody
+#: could reproduce because it was never written down alongside the gains it was measured at.
+#:
+#: Deliberately narrower than "any unit containing dB": a bare "dB" or "dBc" is usually a
+#: *ratio* (rejection, gain, SNR cost, carrier-relative spur level) computed between two
+#: quantities in the same capture, and a ratio cancels the gain it was measured at -- ask for
+#: lna_db/vga_db on one of those and the requirement would be not just unnecessary but
+#: actively misleading, implying a dependency the figure structurally does not have. Found
+#: while migrating the first real figure in Fase 2 (92.9 dB adjacent-channel rejection, a
+#: ratio) against the first version of this list, which included bare "db" and would have
+#: forced a meaningless gain point onto it.
+_RF_UNIT_HINTS = ("dbfs", "dbm")
 
 #: Fields compared to decide whether a measurement's *content* changed, distinct from the
 #: provenance fields (first_seen_*/last_verified_*) that are never part of the comparison.
@@ -165,6 +174,12 @@ def record_measurement(
         raise MeasurementError(
             f"record_measurement({key!r}): status='measured' requires a real value."
         )
+
+    if value is not None:
+        # DSP figures are routinely numpy scalars (float32 from a complex64 pipeline); json
+        # cannot serialise those. Coercing here, once, is cheaper than every call site
+        # remembering it -- found while migrating the first Fase 2 figure.
+        value = float(value)
 
     source_test = _current_source_test()
     entries = _load(path)

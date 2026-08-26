@@ -43,7 +43,7 @@ artefact rather than a document somebody maintains by hand.
 | Requirement | Result |
 |---|---|
 | REQ-FUN-001 — channels on the 12.5 kHz raster | **MET.** Bin mapping agrees with the independent Octave derivation in `matlab/channel_plan.m` |
-| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — 92.9 dB measured on a modulated emitter; 94.1 dB from the prototype's response alone** |
+| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — 92.2 dB measured on a modulated emitter (`channelizer.adjacent_channel_rejection_modulated`); 94.1 dB from the prototype's response alone** |
 
 The rejection figure has history worth keeping. An earlier revision placed the prototype's
 −6 dB point midway between the channel edge and the alias limit, reasoning that this "used"
@@ -52,6 +52,13 @@ Measured on a modulated emitter, rejection was **49.5 dB**. Moving the cutoff ba
 channel edge took it to **92.9 dB** at no CPU cost, and a strong emitter stopped producing
 spurious detections in both neighbouring bins. A channeliser fault that looks exactly like a
 detector fault.
+
+That 92.9 dB was itself a snapshot, not a constant: the same test, unchanged, now measures
+**92.2 dB** (`channelizer.adjacent_channel_rejection_modulated`) — no change to the cutoff
+formula or the filter parameters in between, so the 0.7 dB drift is most plausibly the numpy/
+scipy toolchain, not a code regression. Comfortably clear of both the 85 dB test threshold
+and the 60 dB requirement either way, but it is exactly the shape of drift T1 exists to catch
+before a hand-transcribed copy of it goes stale somewhere nobody is looking.
 
 ---
 

@@ -3,7 +3,7 @@
   "metric": "Per capture: PolyphaseChannelizer (production config, 2 MS/s, 160 ch, decimation 80) on the strongest bin excluding the DC guard and the Nyquist edge guard (same convention as esm446.core.node.EsmNode). mean_dbfs is 10*log10(mean(linear power)) over every post-settle frame (first 50 frames dropped for filter-bank group delay) -- not a mean of dB values. peak_dbfs and min_dbfs are the frame extremes in dB. spread_db = peak - min, the diagnostic for whether PTT was held continuously (or the connector stayed seated) through the whole capture. Window is 10 s except where a point's label says otherwise (the 50-53 dB tail's follow-up used 60 s).",
   "not_yet_resolved": [
     "No point exists between 33 dB and 50 dB in either sweep -- the transition out of saturation happens somewhere in that 17 dB gap, and its shape is unknown. Proposed next step: shift the whole curve by lowering handset TX power further or increasing distance, not by buying more attenuators (3/20/30 dB cannot combine to land inside this gap).",
-    "The Low sweep's 53 dB point improved but did not fully converge after two 60 s follow-up captures (-8.65 and -9.69 dBFS, 1.04 dB apart) against the original two 10 s captures (-11.52 and -8.68 dBFS, 2.84 dB apart). Better, not settled -- see the four low_p8_53db* entries below for the full sequence and what changed between them (connector torque, capture window, and one run under memory pressure).",
+    "The Low sweep's 53 dB point is IMPROVED, NOT RESOLVED: two 60 s follow-up captures (-8.65 and -9.69 dBFS, 1.04 dB apart) narrowed the gap from the original two 10 s captures (-11.52 and -8.68 dBFS, 2.84 dB apart), confirming the slow-drift hypothesis's direction, but 1.04 dB residual disagreement at the highest-attenuation point in the sweep -- exactly where precision matters most, closest to the noise floor -- is not a converged number. Do not treat either 60 s value as the answer. Next step if T4a is resumed: a 120 s window, not another 10 s or 60 s repeat.",
     "No slope or absolute-linearity conclusion is drawn from this data. It documents what was measured, including what did not converge."
   ],
   "sweeps": {
@@ -325,8 +325,8 @@
           "label": "low_p8_53db_60s_v2",
           "atten_db": 53,
           "seconds": 60,
-          "accepted": true,
-          "note": "same conditions as low_p8_53db_60s, rerun with a memory-streaming version of the analysis script (chunked file reads and running accumulators instead of one full-capture array) after the previous run's swap/hang. Clean: no lag, no overruns, closest thing to a settled reading for this point.",
+          "accepted": "unresolved",
+          "note": "same conditions as low_p8_53db_60s, rerun with a memory-streaming version of the analysis script (chunked file reads and running accumulators instead of one full-capture array) after the previous run's swap/hang. Clean: no lag, no overruns -- but NOT a converged reading by itself. It disagrees with low_p8_53db_60s by 1.04 dB; see not_yet_resolved above. Next step if this point is revisited: 120 s, not another repeat at 60 s.",
           "raw": {
             "mean_dbfs": -9.69,
             "peak_dbfs": -7.4,

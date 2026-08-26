@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from esm446.measured import MeasurementError, record_measurement
+from esm446.measured import MeasurementError, record_measurement, toolchain_versions
 
 pytestmark = pytest.mark.skipif(
     subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True).returncode != 0,
@@ -295,3 +295,13 @@ def test_calling_outside_pytest_raises(results_path: Path, monkeypatch: pytest.M
         record_measurement(
             "x", 1.0, units="count", conditions=_minimal_conditions(), path=results_path
         )
+
+
+def test_toolchain_versions_reports_numpy_and_scipy(results_path: Path) -> None:
+    """A near-cancellation DSP figure can move with the toolchain, not just the code -- see
+    the adjacent-channel-rejection migration this was built for."""
+    pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    versions = toolchain_versions()
+    assert set(versions) == {"numpy_version", "scipy_version"}
+    assert all(versions.values()), "both versions must be non-empty strings"

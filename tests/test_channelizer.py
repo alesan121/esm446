@@ -14,7 +14,7 @@ import pytest
 
 from esm446.core import bands
 from esm446.core.channelizer import ChannelizerConfig, PolyphaseChannelizer
-from esm446.measured import record_measurement
+from esm446.measured import record_measurement, toolchain_versions
 
 SAMPLE_RATE = 2_000_000.0
 NUM_CHANNELS = 160
@@ -223,6 +223,7 @@ def test_modulated_emitter_does_not_leak_into_adjacent_bins(
             "bin_index": bin_index,
             "num_channels": NUM_CHANNELS,
             "sample_rate_hz": SAMPLE_RATE,
+            **toolchain_versions(),
         },
     )
 

@@ -54,11 +54,25 @@ spurious detections in both neighbouring bins. A channeliser fault that looks ex
 detector fault.
 
 That 92.9 dB was itself a snapshot, not a constant: the same test, unchanged, now measures
-**92.2 dB** (`channelizer.adjacent_channel_rejection_modulated`) — no change to the cutoff
-formula or the filter parameters in between, so the 0.7 dB drift is most plausibly the numpy/
-scipy toolchain, not a code regression. Comfortably clear of both the 85 dB test threshold
-and the 60 dB requirement either way, but it is exactly the shape of drift T1 exists to catch
-before a hand-transcribed copy of it goes stale somewhere nobody is looking.
+**92.2 dB** (`channelizer.adjacent_channel_rejection_modulated`). The first hypothesis --
+numpy/scipy version drift -- does not hold: `poetry.lock` pins numpy 2.5.2 and scipy 1.18.0
+identically at the commit that set 92.9 dB and at HEAD, and the test code (this exact
+signal, this exact bin arithmetic) has not changed a single character since it was written.
+What the history shows instead: the test's own docstring, from the commit that introduced
+it, only ever claimed "over 90 dB" -- the precise **92.9** figure exists solely in that
+commit's prose and the docs it was hand-copied into, never in an assertion, a print, or a
+recorded result. Nothing in this repository ever pinned it by running the code. Measuring a
+rejection this deep means reading a near-cancellation residual out of a spectral null, which
+is exactly the kind of quantity a different machine, thread count, or BLAS backend can move
+by fractions of a decibel -- a plausible contributor, though the original environment is not
+available to confirm it directly. The defensible conclusion is not "drift": **92.2 dB,
+recorded today under this key, is the first time this figure has ever been produced by an
+automated, reproducible measurement** rather than transcribed by hand. `conditions` for this
+key now records the numpy/scipy versions it was measured against, on the same logic as
+recording the gain point for an RF-level measurement -- if a figure can move with the
+toolchain, the toolchain is part of what makes it reproducible. Comfortably clear of both the
+85 dB test threshold and the 60 dB requirement either way, but this is the exact shape of
+drift T1 exists to catch, and its own migration just caught two of them.
 
 ---
 

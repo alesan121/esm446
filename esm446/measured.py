@@ -107,6 +107,23 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def toolchain_versions() -> dict[str, str]:
+    """numpy/scipy versions, for `conditions` on any DSP-derived figure.
+
+    Found necessary migrating the adjacent-channel-rejection figure: its documented value
+    (92.9 dB) turned out to predate any automated measurement of it, and the first hypothesis
+    for the 0.7 dB gap to today's reproducible 92.2 dB -- a numpy/scipy version bump -- was
+    checked and ruled out (poetry.lock pins were identical). A near-cancellation figure like a
+    deep rejection null can still move with the toolchain (thread count, BLAS backend), so the
+    toolchain is part of what makes the measurement reproducible -- the same logic that
+    requires lna_db/vga_db on an RF-level figure.
+    """
+    import numpy
+    import scipy
+
+    return {"numpy_version": numpy.__version__, "scipy_version": scipy.__version__}
+
+
 def _load(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}

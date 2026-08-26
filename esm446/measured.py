@@ -46,10 +46,19 @@ from typing import Any, Literal
 
 MEASURED_PATH = Path("results/measured.json")
 
-#: Substrings that mark `units` as an RF power/level figure, which therefore needs its gain
-#: point recorded -- the same lesson as v0's OFFSET_CAL, which nobody could reproduce because
-#: it was never written down alongside the gains it was measured at.
-_RF_UNIT_HINTS = ("db", "dbfs", "dbm", "dbc")
+#: Substrings that mark `units` as an *absolute* RF level (depends on receiver gain), which
+#: therefore needs its gain point recorded -- the same lesson as v0's OFFSET_CAL, which nobody
+#: could reproduce because it was never written down alongside the gains it was measured at.
+#:
+#: Deliberately narrower than "any unit containing dB": a bare "dB" or "dBc" is usually a
+#: *ratio* (rejection, gain, SNR cost, carrier-relative spur level) computed between two
+#: quantities in the same capture, and a ratio cancels the gain it was measured at -- ask for
+#: lna_db/vga_db on one of those and the requirement would be not just unnecessary but
+#: actively misleading, implying a dependency the figure structurally does not have. Found
+#: while migrating the first real figure in Fase 2 (92.9 dB adjacent-channel rejection, a
+#: ratio) against the first version of this list, which included bare "db" and would have
+#: forced a meaningless gain point onto it.
+_RF_UNIT_HINTS = ("dbfs", "dbm")
 
 #: Fields compared to decide whether a measurement's *content* changed, distinct from the
 #: provenance fields (first_seen_*/last_verified_*) that are never part of the comparison.
@@ -96,6 +105,23 @@ def _current_source_test() -> str:
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def toolchain_versions() -> dict[str, str]:
+    """numpy/scipy versions, for `conditions` on any DSP-derived figure.
+
+    Found necessary migrating the adjacent-channel-rejection figure: its documented value
+    (92.9 dB) turned out to predate any automated measurement of it, and the first hypothesis
+    for the 0.7 dB gap to today's reproducible 92.2 dB -- a numpy/scipy version bump -- was
+    checked and ruled out (poetry.lock pins were identical). A near-cancellation figure like a
+    deep rejection null can still move with the toolchain (thread count, BLAS backend), so the
+    toolchain is part of what makes the measurement reproducible -- the same logic that
+    requires lna_db/vga_db on an RF-level figure.
+    """
+    import numpy
+    import scipy
+
+    return {"numpy_version": numpy.__version__, "scipy_version": scipy.__version__}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -165,6 +191,12 @@ def record_measurement(
         raise MeasurementError(
             f"record_measurement({key!r}): status='measured' requires a real value."
         )
+
+    if value is not None:
+        # DSP figures are routinely numpy scalars (float32 from a complex64 pipeline); json
+        # cannot serialise those. Coercing here, once, is cheaper than every call site
+        # remembering it -- found while migrating the first Fase 2 figure.
+        value = float(value)
 
     source_test = _current_source_test()
     entries = _load(path)

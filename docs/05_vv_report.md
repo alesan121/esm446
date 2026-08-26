@@ -43,7 +43,7 @@ artefact rather than a document somebody maintains by hand.
 | Requirement | Result |
 |---|---|
 | REQ-FUN-001 — channels on the 12.5 kHz raster | **MET.** Bin mapping agrees with the independent Octave derivation in `matlab/channel_plan.m` |
-| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — 92.9 dB measured on a modulated emitter; 94.1 dB from the prototype's response alone** |
+| REQ-FUN-002 — ≥60 dB adjacent-channel rejection | **MET — 92.2 dB measured on a modulated emitter (`channelizer.adjacent_channel_rejection_modulated`); 94.1 dB from the prototype's response alone** |
 
 The rejection figure has history worth keeping. An earlier revision placed the prototype's
 −6 dB point midway between the channel edge and the alias limit, reasoning that this "used"
@@ -52,6 +52,33 @@ Measured on a modulated emitter, rejection was **49.5 dB**. Moving the cutoff ba
 channel edge took it to **92.9 dB** at no CPU cost, and a strong emitter stopped producing
 spurious detections in both neighbouring bins. A channeliser fault that looks exactly like a
 detector fault.
+
+**92.9 dB was never a measurement to begin with.** The same test, unchanged, today produces
+**92.2 dB** (`channelizer.adjacent_channel_rejection_modulated`), and the gap between the two
+is not drift in the sense of "a good measurement moved" -- it is that 92.9 was not pinned by
+any measurement in the first place. The test's own docstring, from the commit that introduced
+it, only ever claimed "over 90 dB"; the precise **92.9** figure exists solely in that commit's
+prose and the docs it was hand-copied into from there, never in an assertion, a print, or a
+recorded result. Six figures had already been retracted for this exact shape of mistake, and
+this is that shape caught live, one day into the mechanism built to catch it: not a corrupted
+good number, but an unbacked one wearing the appearance of precision, found on its first real
+use. **92.2 dB, recorded today under this key, is the first time this figure has ever come
+from an automated, reproducible measurement** rather than being transcribed by hand.
+
+The first hypothesis tried for the 0.7 dB gap -- numpy/scipy version drift -- was checked and
+does not hold: `poetry.lock` pins numpy 2.5.2 and scipy 1.18.0 identically at the commit that
+wrote down 92.9 and at HEAD, and the test code (this exact signal, this exact bin arithmetic)
+has not changed a single character since it was written. Measuring a rejection this deep means
+reading a near-cancellation residual out of a spectral null, which is exactly the kind of
+quantity a different machine, thread count, or BLAS backend can move by fractions of a
+decibel -- offered as a plausible contributor to that 0.7 dB, not a settled one, since the
+original environment is not available to confirm it directly, and not the headline finding
+here regardless: `conditions` for this key now records the numpy/scipy versions it was
+measured against, on the same logic as recording the gain point for an RF-level measurement --
+if a figure can move with the
+toolchain, the toolchain is part of what makes it reproducible. Comfortably clear of both the
+85 dB test threshold and the 60 dB requirement either way, but this is the exact shape of
+drift T1 exists to catch, and its own migration just caught two of them.
 
 ---
 

@@ -14,6 +14,7 @@ import pytest
 
 from esm446.core import bands
 from esm446.core.channelizer import ChannelizerConfig, PolyphaseChannelizer
+from esm446.measured import record_measurement, toolchain_versions
 
 SAMPLE_RATE = 2_000_000.0
 NUM_CHANNELS = 160
@@ -206,6 +207,24 @@ def test_modulated_emitter_does_not_leak_into_adjacent_bins(
     assert rejection_db > 85.0, (
         f"modulated adjacent-channel rejection only {rejection_db:.1f} dB; "
         f"a strong emitter will produce spurious detections either side of it"
+    )
+
+    # T1: a ratio between two bins of the same capture -- gain-invariant, no lna_db/vga_db.
+    record_measurement(
+        "channelizer.adjacent_channel_rejection_modulated",
+        rejection_db,
+        units="dB",
+        conditions={
+            "description": (
+                "narrowband-FM emitter (750 Hz deviation, 700 Hz tone) placed at a channel "
+                "bin centre; rejection measured against the louder of its two neighbouring "
+                "bins, with the cutoff at the channel edge"
+            ),
+            "bin_index": bin_index,
+            "num_channels": NUM_CHANNELS,
+            "sample_rate_hz": SAMPLE_RATE,
+            **toolchain_versions(),
+        },
     )
 
 

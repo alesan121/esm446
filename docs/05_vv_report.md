@@ -493,7 +493,7 @@ two things worth stating as open, not settled:
   same gain point at the start and end of the session specifically to measure this floor,
   rather than dedicating a separate session to it.
 
-  **Resolved since, with a proper 50 ohm termination.** 4x10 s captures at LNA 32 / VGA 40
+  **The open-port-proxy question is settled; the threshold question is not.** 4x10 s captures at LNA 32 / VGA 40
   with a matched 50 ohm load on the antenna port:
 
   | condition | occupied codes | mean I | mean Q |

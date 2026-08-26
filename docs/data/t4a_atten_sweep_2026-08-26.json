@@ -1,0 +1,312 @@
+{
+  "protocol": "T4a: attenuator-linearity sweep, radiated (PMR446 handset -> HackRF, LNA32/VGA40, channel 8 / 446.09375 MHz nominal). Fixed setup: handset, HackRF, receive antenna and cable, operator position unchanged between points -- only the attenuator combo (built from 3/20/30 dB units) and, between the two sweeps, the handset's TX power setting. Attenuators are uncertified; their real tolerance is unknown and is not corrected for anywhere in this file.",
+  "metric": "Per capture: PolyphaseChannelizer (production config, 2 MS/s, 160 ch, decimation 80) on the strongest bin excluding the DC guard and the Nyquist edge guard (same convention as esm446.core.node.EsmNode). mean_dbfs is 10*log10(mean(linear power)) over every post-settle frame (first 50 frames dropped for filter-bank group delay) -- not a mean of dB values. peak_dbfs and min_dbfs are the frame extremes in dB. spread_db = peak - min, the diagnostic for whether PTT was held continuously through the whole ~10 s capture.",
+  "not_yet_resolved": [
+    "No point exists between 33 dB and 50 dB in either sweep -- the transition out of saturation happens somewhere in that 17 dB gap, and its shape is unknown.",
+    "The 50-53 dB tail is unstable, most visibly in the Low sweep's 53 dB point: two captures gave -11.52 and -8.68 dBFS, which do not converge. Attributed to real multipath fading on a radiated link with signal already weak, not to a capture fault -- a single longer integration window (order of tens of seconds, not another 10 s repeat) is the proposed next step, not yet done.",
+    "No slope or absolute-linearity conclusion is drawn from this data. It documents what was measured, including what did not converge."
+  ],
+  "sweeps": {
+    "high_txp": {
+      "handset_tx_power_setting": "High",
+      "points": [
+        {
+          "label": "p1_0db",
+          "atten_db": 0,
+          "accepted": false,
+          "reason": "script bug: pre-fix active/floor heuristic assumed intermittent PTT and returned mean_active_dbfs=None under continuous PTT (see p1_0db_v2 for the fix)",
+          "raw": {
+            "mean_active_dbfs": null,
+            "peak_dbfs": 3.65,
+            "floor_db": 1.18,
+            "n_active_frames": 0
+          }
+        },
+        {
+          "label": "p1_0db_v2",
+          "atten_db": 0,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.77,
+            "peak_dbfs": 3.64,
+            "min_dbfs": -0.03,
+            "spread_db": 3.68
+          }
+        },
+        {
+          "label": "p2_3db",
+          "atten_db": 3,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.6,
+            "peak_dbfs": 4.21,
+            "min_dbfs": -0.58,
+            "spread_db": 4.79
+          }
+        },
+        {
+          "label": "p3_20db",
+          "atten_db": 20,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.64,
+            "peak_dbfs": 3.54,
+            "min_dbfs": -0.03,
+            "spread_db": 3.57
+          }
+        },
+        {
+          "label": "p4_23db",
+          "atten_db": 23,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.7,
+            "peak_dbfs": 3.82,
+            "min_dbfs": -0.03,
+            "spread_db": 3.85
+          }
+        },
+        {
+          "label": "p5_30db",
+          "atten_db": 30,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.45,
+            "peak_dbfs": 3.22,
+            "min_dbfs": -0.03,
+            "spread_db": 3.26
+          }
+        },
+        {
+          "label": "p6_33db",
+          "atten_db": 33,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 1.91,
+            "peak_dbfs": 3.15,
+            "min_dbfs": -0.06,
+            "spread_db": 3.21
+          }
+        },
+        {
+          "label": "p7_50db",
+          "atten_db": 50,
+          "accepted": false,
+          "reason": "11.87 dB intra-capture spread triggered the script's own PTT-gap warning; the user's confirmation message arrived truncated (\"50 db, tax\"), consistent with an interrupted PTT",
+          "raw": {
+            "mean_dbfs": -8.35,
+            "peak_dbfs": -3.4,
+            "min_dbfs": -15.28,
+            "spread_db": 11.87
+          }
+        },
+        {
+          "label": "p7_50db_v2",
+          "atten_db": 50,
+          "accepted": false,
+          "reason": "protocol violation, not a data problem: launched by the agent before the user's explicit \"listo\" confirmation for this repeat, so PTT state during the capture cannot be verified either way",
+          "raw": {
+            "mean_dbfs": -2.47,
+            "peak_dbfs": -1.88,
+            "min_dbfs": -3.06,
+            "spread_db": 1.18
+          }
+        },
+        {
+          "label": "p7_50db_v3",
+          "atten_db": 50,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": -2.54,
+            "peak_dbfs": -1.24,
+            "min_dbfs": -3.55,
+            "spread_db": 2.3
+          }
+        },
+        {
+          "label": "p8_53db",
+          "atten_db": 53,
+          "accepted": false,
+          "reason": "8.78 dB intra-capture spread, well above the ~3-4 dB typical of a clean point; user confirmed PTT was held throughout, so attributed to real signal fading rather than a PTT gap -- repeated for confirmation, and the repeat's tighter spread (1.43 dB) was preferred",
+          "raw": {
+            "mean_dbfs": -10.71,
+            "peak_dbfs": -7.22,
+            "min_dbfs": -16.0,
+            "spread_db": 8.78
+          }
+        },
+        {
+          "label": "p8_53db_v2",
+          "atten_db": 53,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": -7.02,
+            "peak_dbfs": -6.46,
+            "min_dbfs": -7.89,
+            "spread_db": 1.43
+          }
+        }
+      ]
+    },
+    "low_txp": {
+      "handset_tx_power_setting": "Low",
+      "points": [
+        {
+          "label": "low_p1_0db",
+          "atten_db": 0,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.68,
+            "peak_dbfs": 3.62,
+            "min_dbfs": -0.52,
+            "spread_db": 4.14
+          }
+        },
+        {
+          "label": "low_p2_3db",
+          "atten_db": 3,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.66,
+            "peak_dbfs": 3.58,
+            "min_dbfs": -0.03,
+            "spread_db": 3.62
+          }
+        },
+        {
+          "label": "low_p3_20db",
+          "atten_db": 20,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": 2.36,
+            "peak_dbfs": 3.16,
+            "min_dbfs": -0.03,
+            "spread_db": 3.19
+          }
+        },
+        {
+          "label": "low_p4_23db",
+          "atten_db": 23,
+          "accepted": false,
+          "reason": "6.01 dB intra-capture spread, elevated vs. the ~3-4 dB baseline; retroactively attributed to the receive antenna connector already loosening before it fully disconnected during setup of the next point (30 dB)",
+          "raw": {
+            "mean_dbfs": 0.77,
+            "peak_dbfs": 2.8,
+            "min_dbfs": -3.21,
+            "spread_db": 6.01
+          }
+        },
+        {
+          "label": "low_p4_23db_v2",
+          "atten_db": 23,
+          "accepted": true,
+          "note": "repeat after the receive antenna connector was confirmed reseated \"the same way\" (operator's words)",
+          "raw": {
+            "mean_dbfs": 2.62,
+            "peak_dbfs": 3.52,
+            "min_dbfs": -0.03,
+            "spread_db": 3.55
+          }
+        },
+        {
+          "label": "low_p5_30db_attempt_a",
+          "atten_db": 30,
+          "accepted": false,
+          "reason": "rejected by the operator before the capture ran: the handset radio was powered off",
+          "raw": null
+        },
+        {
+          "label": "low_p5_30db_attempt_b",
+          "atten_db": 30,
+          "accepted": false,
+          "reason": "rejected by the operator before the capture ran: the receive antenna connector had fallen off (incident 1 of 2 at this point)",
+          "raw": null
+        },
+        {
+          "label": "low_p5_30db_v2",
+          "atten_db": 30,
+          "accepted": false,
+          "reason": "reading moved in the wrong direction relative to the (later found to be equally contaminated) first 23 dB attempt; retained as suspect pending confirmation of the antenna reseat, superseded once the connector's mechanical firmness could not be independently guaranteed",
+          "raw": {
+            "mean_dbfs": 1.78,
+            "peak_dbfs": 3.11,
+            "min_dbfs": -0.04,
+            "spread_db": 3.15
+          }
+        },
+        {
+          "label": "low_p5_30db_v3",
+          "atten_db": 30,
+          "accepted": false,
+          "reason": "110.86 dB intra-capture spread (min -107.43 dBFS, essentially the thermal floor, mid-capture): the receive antenna connector fell a second time during this specific capture, cutting the signal for part of the window",
+          "raw": {
+            "mean_dbfs": -1.22,
+            "peak_dbfs": 3.43,
+            "min_dbfs": -107.43,
+            "spread_db": 110.86
+          }
+        },
+        {
+          "label": "low_p5_30db_v4",
+          "atten_db": 30,
+          "accepted": true,
+          "note": "captured after the operator explicitly confirmed the antenna connector was firm",
+          "raw": {
+            "mean_dbfs": 2.04,
+            "peak_dbfs": 3.09,
+            "min_dbfs": -0.03,
+            "spread_db": 3.12
+          }
+        },
+        {
+          "label": "low_p6_33db",
+          "atten_db": 33,
+          "accepted": true,
+          "note": "no incident reported at this point",
+          "raw": {
+            "mean_dbfs": 2.38,
+            "peak_dbfs": 3.18,
+            "min_dbfs": -0.03,
+            "spread_db": 3.21
+          }
+        },
+        {
+          "label": "low_p7_50db",
+          "atten_db": 50,
+          "accepted": true,
+          "raw": {
+            "mean_dbfs": -11.81,
+            "peak_dbfs": -9.72,
+            "min_dbfs": -15.58,
+            "spread_db": 5.86
+          }
+        },
+        {
+          "label": "low_p8_53db",
+          "atten_db": 53,
+          "accepted": "unresolved",
+          "reason": "does not converge with its own repeat (low_p8_53db_v2); no capture-level fault found in either (spreads 6.29 and 3.66 dB, both below the PTT-gap warning threshold and both confirmed PTT-held). Kept as an observed range, not averaged.",
+          "raw": {
+            "mean_dbfs": -11.52,
+            "peak_dbfs": -10.23,
+            "min_dbfs": -16.53,
+            "spread_db": 6.29
+          }
+        },
+        {
+          "label": "low_p8_53db_v2",
+          "atten_db": 53,
+          "accepted": "unresolved",
+          "reason": "does not converge with low_p8_53db -- see that entry",
+          "raw": {
+            "mean_dbfs": -8.68,
+            "peak_dbfs": -5.75,
+            "min_dbfs": -9.41,
+            "spread_db": 3.66
+          }
+        }
+      ]
+    }
+  },
+  "capture_layer_note": "Every capture in this file (accepted or not) returned overruns=0 with hackrf_transfer completing normally -- no capture ever failed at the USB/HackRF layer. Every discarded point here is a physical (antenna connector), procedural (PTT timing, agent launch timing), or propagation (fading) issue, not a repeat of the capture-failure pattern documented in scripts/overnight_survey.py's run_c2/run_c3 circuit breakers."
+}

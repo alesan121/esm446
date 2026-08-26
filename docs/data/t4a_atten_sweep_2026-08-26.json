@@ -1,9 +1,9 @@
 {
-  "protocol": "T4a: attenuator-linearity sweep, radiated (PMR446 handset -> HackRF, LNA32/VGA40, channel 8 / 446.09375 MHz nominal). Fixed setup: handset, HackRF, receive antenna and cable, operator position unchanged between points -- only the attenuator combo (built from 3/20/30 dB units) and, between the two sweeps, the handset's TX power setting. Attenuators are uncertified; their real tolerance is unknown and is not corrected for anywhere in this file.",
-  "metric": "Per capture: PolyphaseChannelizer (production config, 2 MS/s, 160 ch, decimation 80) on the strongest bin excluding the DC guard and the Nyquist edge guard (same convention as esm446.core.node.EsmNode). mean_dbfs is 10*log10(mean(linear power)) over every post-settle frame (first 50 frames dropped for filter-bank group delay) -- not a mean of dB values. peak_dbfs and min_dbfs are the frame extremes in dB. spread_db = peak - min, the diagnostic for whether PTT was held continuously through the whole ~10 s capture.",
+  "protocol": "T4a: attenuator-linearity sweep, radiated (PMR446 handset -> HackRF, LNA32/VGA40, channel 8 / 446.09375 MHz nominal). Fixed setup: handset, HackRF, receive antenna and cable, operator position unchanged between points -- only the attenuator combo (built from 3/20/30 dB units) and, between the two sweeps, the handset's TX power setting. Attenuators are uncertified; their real tolerance is unknown and is not corrected for anywhere in this file. Addendum after two SMA disconnects in the Low sweep: check the receive antenna connector's torque before EVERY point, not just at the start of the sweep -- likely mechanical tension from the cable run, not bad luck.",
+  "metric": "Per capture: PolyphaseChannelizer (production config, 2 MS/s, 160 ch, decimation 80) on the strongest bin excluding the DC guard and the Nyquist edge guard (same convention as esm446.core.node.EsmNode). mean_dbfs is 10*log10(mean(linear power)) over every post-settle frame (first 50 frames dropped for filter-bank group delay) -- not a mean of dB values. peak_dbfs and min_dbfs are the frame extremes in dB. spread_db = peak - min, the diagnostic for whether PTT was held continuously (or the connector stayed seated) through the whole capture. Window is 10 s except where a point's label says otherwise (the 50-53 dB tail's follow-up used 60 s).",
   "not_yet_resolved": [
-    "No point exists between 33 dB and 50 dB in either sweep -- the transition out of saturation happens somewhere in that 17 dB gap, and its shape is unknown.",
-    "The 50-53 dB tail is unstable, most visibly in the Low sweep's 53 dB point: two captures gave -11.52 and -8.68 dBFS, which do not converge. Attributed to real multipath fading on a radiated link with signal already weak, not to a capture fault -- a single longer integration window (order of tens of seconds, not another 10 s repeat) is the proposed next step, not yet done.",
+    "No point exists between 33 dB and 50 dB in either sweep -- the transition out of saturation happens somewhere in that 17 dB gap, and its shape is unknown. Proposed next step: shift the whole curve by lowering handset TX power further or increasing distance, not by buying more attenuators (3/20/30 dB cannot combine to land inside this gap).",
+    "The Low sweep's 53 dB point improved but did not fully converge after two 60 s follow-up captures (-8.65 and -9.69 dBFS, 1.04 dB apart) against the original two 10 s captures (-11.52 and -8.68 dBFS, 2.84 dB apart). Better, not settled -- see the four low_p8_53db* entries below for the full sequence and what changed between them (connector torque, capture window, and one run under memory pressure).",
     "No slope or absolute-linearity conclusion is drawn from this data. It documents what was measured, including what did not converge."
   ],
   "sweeps": {
@@ -296,6 +296,7 @@
         {
           "label": "low_p8_53db_v2",
           "atten_db": 53,
+          "seconds": 10,
           "accepted": "unresolved",
           "reason": "does not converge with low_p8_53db -- see that entry",
           "raw": {
@@ -304,9 +305,38 @@
             "min_dbfs": -9.41,
             "spread_db": 3.66
           }
+        },
+        {
+          "label": "low_p8_53db_60s",
+          "atten_db": 53,
+          "seconds": 60,
+          "accepted": "unresolved",
+          "note": "connector torque checked/tightened before this point (protocol addendum); 60 s window per the slow-drift hypothesis (10 s captures showed only 3-6 dB intra-capture spread, ruling out fast fading -- instability was between separate captures, not within one)",
+          "reason": "run under real memory pressure on this machine (7.6 GB RAM): decoding 60 s to a single complex64 array plus the full spectra array approached ~2 GB, drove the system into swap, and the process hung on shutdown after printing this result (killed by an external timeout at exit code 124, but the printed result itself completed normally). 1 overrun recorded, plausibly from the same system lag during capture. Not discarded outright, but flagged: this is the run that motivated the streaming rewrite used for the next point.",
+          "raw": {
+            "mean_dbfs": -8.65,
+            "peak_dbfs": -5.15,
+            "min_dbfs": -12.88,
+            "spread_db": 7.73,
+            "overruns": 1
+          }
+        },
+        {
+          "label": "low_p8_53db_60s_v2",
+          "atten_db": 53,
+          "seconds": 60,
+          "accepted": true,
+          "note": "same conditions as low_p8_53db_60s, rerun with a memory-streaming version of the analysis script (chunked file reads and running accumulators instead of one full-capture array) after the previous run's swap/hang. Clean: no lag, no overruns, closest thing to a settled reading for this point.",
+          "raw": {
+            "mean_dbfs": -9.69,
+            "peak_dbfs": -7.4,
+            "min_dbfs": -13.09,
+            "spread_db": 5.68,
+            "overruns": 0
+          }
         }
       ]
     }
   },
-  "capture_layer_note": "Every capture in this file (accepted or not) returned overruns=0 with hackrf_transfer completing normally -- no capture ever failed at the USB/HackRF layer. Every discarded point here is a physical (antenna connector), procedural (PTT timing, agent launch timing), or propagation (fading) issue, not a repeat of the capture-failure pattern documented in scripts/overnight_survey.py's run_c2/run_c3 circuit breakers."
+  "capture_layer_note": "Every capture in this file returned overruns=0 except low_p8_53db_60s (1 overrun, under real memory pressure on the analysis side -- see that entry). No capture ever failed to complete at the hackrf_transfer/USB layer. Every discarded or unresolved point here is a physical (antenna connector), procedural (PTT timing, agent launch timing), analysis-side resource, or propagation (fading) issue, not a repeat of the capture-failure pattern documented in scripts/overnight_survey.py's run_c2/run_c3 circuit breakers."
 }

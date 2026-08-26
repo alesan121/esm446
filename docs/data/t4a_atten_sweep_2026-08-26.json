@@ -92,7 +92,7 @@
           "label": "p7_50db",
           "atten_db": 50,
           "accepted": false,
-          "reason": "11.87 dB intra-capture spread triggered the script's own PTT-gap warning; the user's confirmation message arrived truncated (\"50 db, tax\"), consistent with an interrupted PTT",
+          "reason": "11.87 dB intra-capture spread triggered the script's own PTT-gap warning; the user's confirmation message arrived garbled/incomplete (likely a voice-to-text transcription artifact), consistent with an interrupted PTT",
           "raw": {
             "mean_dbfs": -8.35,
             "peak_dbfs": -3.4,

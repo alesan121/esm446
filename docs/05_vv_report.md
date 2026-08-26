@@ -493,8 +493,30 @@ two things worth stating as open, not settled:
   same gain point at the start and end of the session specifically to measure this floor,
   rather than dedicating a separate session to it.
 
-  Falsifying the remaining VGA 20 gap, and replacing the open-port proxy with a proper
-  reference, both still need the 50 ohm termination that has not arrived yet.
+  **Resolved since, with a proper 50 ohm termination.** 4x10 s captures at LNA 32 / VGA 40
+  with a matched 50 ohm load on the antenna port:
+
+  | condition | occupied codes | mean I | mean Q |
+  |---|---|---|---|
+  | antenna | 62-66 (mean 63.75, std 1.48) | -- | -- |
+  | 50 ohm load | 19, 19, 19, 19 (std 0.00) | +0.560 | -0.270 |
+  | open port | 18-19 (mean 18.50, std 0.50) | -- | -- |
+
+  The load lands on top of the open-port range, not at an intermediate level -- the open port
+  was already a valid proxy for the true thermal floor, and there is no hidden third level
+  between it and the antenna condition. The antenna/open-port separation measured above is
+  real signal, not the receiver's own noise. This does not by itself set a threshold (the
+  quiet-overnight-band question two paragraphs up is unchanged), but it means the open port
+  can be used as the silence reference for that future work without a physical load on the
+  bench every session.
+
+  One thing worth keeping rather than chasing today: the load's I/Q means are not zero
+  (+0.560, -0.270) on a port terminated in a passive impedance that should produce none. A
+  plausible, unconfirmed cause is LO leakage into the receive path or an uncalibrated ADC
+  offset -- both are known characteristics of direct-conversion front ends, not evidence of a
+  fault. Recorded here as the baseline to compare against if it ever moves.
+
+  Falsifying the remaining VGA 20 gap still needs further work.
 - One point in that sweep, LNA 40 dB / VGA 30 dB, measured 42 occupied codes against 12-18 at
   the same VGA setting for every other LNA value -- a break in an otherwise smooth trend,
   timestamped at 21:18:28, immediately before two later points in the same sweep failed to
